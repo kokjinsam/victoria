@@ -1,0 +1,9 @@
+{
+  "#meta": {"format": "ITF", "source": "Counter.tla"},
+  "vars": ["count", "lastTransition"],
+  "states": [
+    {"#meta": {"index": 0}, "count": 0, "lastTransition": "Initial"},
+    {"#meta": {"index": 1}, "count": 1, "lastTransition": "Increment"},
+    {"#meta": {"index": 2}, "count": 1, "lastTransition": "Increment"}
+  ]
+}
