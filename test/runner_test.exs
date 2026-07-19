@@ -95,7 +95,7 @@ defmodule Victoria.RunnerTest do
     refute_received {:cleaned_up, _count}
   end
 
-  test "reports an exact initial refinement mismatch and never executes Initial" do
+  test "reports an exact initial verification failure and never executes Initial" do
     trace_path = fixture("counter_initial_mismatch.itf.json")
     assert {:ok, trace} = ITF.load(trace_path)
 
@@ -103,7 +103,8 @@ defmodule Victoria.RunnerTest do
             %Failure{
               trace_path: ^trace_path,
               model: InitialMismatchModel,
-              phase: :initial_refinement,
+              phase: :initial_verification,
+              reason: :states_differ,
               step_index: 0,
               action: "Initial",
               expected: %{"count" => 3},
@@ -113,7 +114,7 @@ defmodule Victoria.RunnerTest do
     refute_received :initial_was_executed
   end
 
-  test "stops at the first step refinement mismatch and renders useful context" do
+  test "stops at the first step verification failure and renders useful context" do
     trace_path = fixture("counter_step_mismatch.itf.json")
     assert {:ok, trace} = ITF.load(trace_path)
 
@@ -121,7 +122,8 @@ defmodule Victoria.RunnerTest do
             %Failure{
               trace_path: ^trace_path,
               model: BrokenCounterModel,
-              phase: :step_refinement,
+              phase: :step_verification,
+              reason: :states_differ,
               step_index: 1,
               action: "Increment",
               expected: %{"count" => 2},
@@ -129,12 +131,13 @@ defmodule Victoria.RunnerTest do
             } = failure} = Runner.replay(trace, BrokenCounterModel)
 
     message = Exception.message(failure)
-    assert message =~ "Victoria refinement failure"
+    assert message =~ "Victoria verification failure"
     assert message =~ "Model:\n  Victoria.Test.BrokenCounterModel"
     assert message =~ "Step:\n  1"
     assert message =~ "Action:\n  Increment"
     assert message =~ ~s(Expected:\n  %{"count" => 2})
     assert message =~ ~s(Observed:\n  %{"count" => 0})
+    assert message =~ "Reason:\n  states differ"
     assert message =~ "Trace:\n  #{trace_path}"
   end
 
@@ -233,10 +236,11 @@ defmodule Victoria.RunnerTest do
     refute_received :cleanup
   end
 
-  test "uses exact equality for refinement comparisons" do
+  test "uses exact equality for verification" do
     assert {:error,
             %Failure{
-              phase: :step_refinement,
+              phase: :step_verification,
+              reason: :states_differ,
               expected: %{"count" => 1.0},
               observed: %{"count" => 1}
             }} = replay("counter.itf.json", NumericProjectionModel)

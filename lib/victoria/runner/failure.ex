@@ -17,11 +17,11 @@ defmodule Victoria.Runner.Failure do
   @type phase ::
           :trace_validation
           | :initialization
-          | :initial_refinement
+          | :initial_verification
           | :execution
           | :snapshot
           | :projection
-          | :step_refinement
+          | :step_verification
           | :cleanup
 
   @type t :: %__MODULE__{
@@ -39,13 +39,13 @@ defmodule Victoria.Runner.Failure do
   @impl Exception
   def message(failure) do
     [
-      "Victoria refinement failure",
+      "Victoria verification failure",
       field("Model", inspect(failure.model)),
       field("Phase", format_phase(failure.phase)),
       optional_field("Step", failure.step_index),
       optional_field("Action", failure.action),
       comparison_fields(failure),
-      field("Reason", inspect(failure.reason)),
+      field("Reason", format_reason(failure.reason)),
       optional_field("Cleanup error", failure.cleanup_error, &inspect/1),
       field("Trace", failure.trace_path)
     ]
@@ -54,7 +54,7 @@ defmodule Victoria.Runner.Failure do
     |> Enum.join("\n\n")
   end
 
-  defp comparison_fields(%{phase: phase} = failure) when phase in [:initial_refinement, :step_refinement] do
+  defp comparison_fields(%{phase: phase} = failure) when phase in [:initial_verification, :step_verification] do
     [field("Expected", inspect(failure.expected)), field("Observed", inspect(failure.observed))]
   end
 
@@ -65,6 +65,9 @@ defmodule Victoria.Runner.Failure do
   defp optional_field(label, value), do: optional_field(label, value, &to_string/1)
 
   defp field(label, value), do: "#{label}:\n  #{value}"
+
+  defp format_reason(:states_differ), do: "states differ"
+  defp format_reason(reason), do: inspect(reason)
 
   defp format_phase(phase) do
     phase

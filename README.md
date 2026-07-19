@@ -23,10 +23,11 @@ end
 
 Every raw state must contain a string `"lastTransition"` field. Victoria turns that field into
 `Victoria.Step.action` and removes it from `Victoria.Step.state`. State zero must use `"Initial"`. It
-initializes the implementation and is compared through `snapshot/1` and `project/1`, but it is never
-executed. Every later step is executed once, then the implementation snapshot and formal projection are
-compared with exact equality (`===`). The implementation value is opaque to Victoria and is only threaded
-through model callbacks.
+initializes the implementation and is verified through `snapshot/1` and `project/1`, but it is never
+executed. Every later step is executed once and then verified. The formal projection is the expected state;
+the implementation snapshot is the observed state. Verification compares those maps with exact equality
+(`===`). A trace conforms when every expected state equals its observed state. The implementation value is
+opaque to Victoria and is only threaded through model callbacks.
 
 Victoria accepts ITF booleans, strings, recursively nested JSON arrays and record objects, and tagged
 integers of the form `{"#bigint": "<signed decimal>"}`. Strings are always preserved verbatim, including
@@ -53,9 +54,9 @@ their TLC-style Apalache configs belong in `test/specs`. Generated checker work 
 
 ## Deferred work
 
-The current boundary does not include `Victoria.assert_refines`, `Victoria.Spec`, `Model.spec/0`, Victoria-
-owned Apalache invocation or trace generation, lasso execution, rich tagged values beyond `#bigint`,
-shrinking, random testing, or executable reference models.
+The current boundary does not include `Victoria.assert_conform/2`, `Victoria.Spec`, `Model.spec/0`,
+Victoria-owned Apalache invocation or trace generation, lasso execution, rich tagged values beyond
+`#bigint`, shrinking, random testing, or executable reference models.
 
 ## Prior Art
 

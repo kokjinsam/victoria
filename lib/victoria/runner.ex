@@ -4,6 +4,8 @@ defmodule Victoria.Runner do
   alias Victoria.Runner.Failure
   alias Victoria.Runner.Report
   alias Victoria.Trace
+  alias Victoria.VerificationFailure
+  alias Victoria.Verifier
 
   @spec replay(Trace.t(), module()) :: {:ok, Report.t()} | {:error, Failure.t()}
   def replay(%Trace{source: trace_path, loop_index: nil, steps: [initial | steps]}, model) do
@@ -32,7 +34,7 @@ defmodule Victoria.Runner do
   end
 
   defp replay_initialized(trace_path, model, initial, steps, implementation) do
-    case compare(trace_path, model, initial, implementation, :initial_refinement) do
+    case compare(trace_path, model, initial, implementation, :initial_verification) do
       :ok -> run_steps(trace_path, model, steps, implementation, 0)
       {:error, replay_failure} -> {:error, replay_failure, implementation}
     end
@@ -45,7 +47,7 @@ defmodule Victoria.Runner do
   defp run_steps(trace_path, model, [step | rest], implementation, executed_count) do
     case callback(model, :execute, [step, implementation]) do
       {:ok, {:ok, next_implementation}} ->
-        case compare(trace_path, model, step, next_implementation, :step_refinement) do
+        case compare(trace_path, model, step, next_implementation, :step_verification) do
           :ok -> run_steps(trace_path, model, rest, next_implementation, executed_count + 1)
           {:error, replay_failure} -> {:error, replay_failure, next_implementation}
         end
@@ -64,19 +66,21 @@ defmodule Victoria.Runner do
   defp compare(trace_path, model, step, implementation, mismatch_phase) do
     with {:ok, observed} <- map_callback(trace_path, model, :snapshot, implementation, step),
          {:ok, expected} <- map_callback(trace_path, model, :projection, step, step) do
-      if observed === expected do
-        :ok
-      else
-        {:error,
-         failure(
-           trace_path,
-           model,
-           mismatch_phase,
-           :refinement_mismatch,
-           step,
-           expected,
-           observed
-         )}
+      case Verifier.verify(expected, observed) do
+        :ok ->
+          :ok
+
+        {:error, %VerificationFailure{} = verification_failure} ->
+          {:error,
+           failure(
+             trace_path,
+             model,
+             mismatch_phase,
+             verification_failure.reason,
+             step,
+             verification_failure.expected,
+             verification_failure.observed
+           )}
       end
     end
   end
