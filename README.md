@@ -4,6 +4,46 @@ Model-based testing with the Apalache TLA+ model checker.
 
 Victoria replays one fixed ITF trace against one model, sequentially, and stops at the first failure.
 
+## Apalache planning
+
+Victoria can validate a formal artifact and construct a deterministic Apalache plan without executing it:
+
+```elixir
+{:ok, spec} =
+  Victoria.Spec.new(
+    source: "test/specs/Counter.tla",
+    config: "test/specs/Counter.cfg"
+  )
+
+run_directory =
+  Victoria.Apalache.RunDirectory.build(spec,
+    generated_at: DateTime.utc_now(),
+    suffix: "a1b2c3"
+  )
+
+plan =
+  Victoria.Apalache.Plan.new(spec,
+    mode: :simulate,
+    length: 10,
+    max_run: 3,
+    run_directory: run_directory
+  )
+```
+
+Phase 1.1 only produces data: it does not locate or invoke Apalache, create the run directory, or discover
+generated traces. `plan.argv` is an ordered list of separate arguments, never a shell command. Paths that
+contain spaces remain one argument. The future executor will own the `--run-dir` boundary and everything
+created beneath it.
+
+Run names combine a UTC timestamp, a slug derived from the `.tla` basename, and a caller-supplied
+six-character lowercase hexadecimal suffix. Given the same inputs, naming and planning are deterministic.
+Victoria intends to support the latest stable Apalache release, but Phase 1.1 has no version field and does
+not locate or enforce a version.
+
+Future execution results will represent generated traces in the plural. Phase 1.2 must preserve the
+underlying `Victoria.ITF.Error` when trace loading fails; whether that error is returned directly or wrapped
+will be decided with the execution result and error contracts.
+
 ## Fixed-trace replay
 
 Load and validate an ITF document through the public trace API:
@@ -75,9 +115,10 @@ their TLC-style Apalache configs belong in `test/specs`. Generated checker work 
 
 ## Deferred work
 
-The current boundary does not include `Victoria.Spec`, `Model.spec/0`,
-Victoria-owned Apalache invocation or trace generation, lasso execution, rich tagged values beyond
-`#bigint`, shrinking, random testing, or executable reference models.
+The current boundary does not include `Model.spec/0`, Victoria-owned Apalache execution, executable or
+version discovery and enforcement, generated trace discovery and loading, execution result and error
+contracts, lasso execution, rich tagged values beyond `#bigint`, shrinking, random testing, advanced
+generated-trace testing, or executable reference models.
 
 ## Prior Art
 

@@ -1,3 +1,4 @@
+# credo:disable-for-next-line Credo.Check.Consistency.ExceptionNames
 defmodule Victoria.Runner.Failure do
   @moduledoc "Structured failure returned by fixed-trace replay."
 
