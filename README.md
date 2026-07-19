@@ -4,9 +4,10 @@ Model-based testing with the Apalache TLA+ model checker.
 
 Victoria replays one fixed ITF trace against one model, sequentially, and stops at the first failure.
 
-## Apalache planning
+## Apalache planning and execution
 
-Victoria can validate a formal artifact and construct a deterministic Apalache plan without executing it:
+Victoria validates formal artifacts, constructs deterministic Apalache plans, and materializes every valid
+ITF trace produced by a plan:
 
 ```elixir
 {:ok, spec} =
@@ -25,24 +26,37 @@ plan =
   Victoria.Apalache.Plan.new(spec,
     mode: :simulate,
     length: 10,
-    max_run: 3,
+    max_run: 5,
     run_directory: run_directory
   )
+
+{:ok, result} = Victoria.Apalache.run(plan)
+
+verification_results =
+  Enum.map(result.traces, fn trace ->
+    Victoria.verify(Counter.Model, trace: trace)
+  end)
 ```
 
-Phase 1.1 only produces data: it does not locate or invoke Apalache, create the run directory, or discover
-generated traces. `plan.argv` is an ordered list of separate arguments, never a shell command. Paths that
-contain spaces remain one argument. The future executor will own the `--run-dir` boundary and everything
-created beneath it.
+`Victoria.Apalache.run/2` supports exactly Apalache v0.58.3. It probes the installed executable locally and
+never queries the network. Bare executable names resolve through `PATH`; explicit relative paths resolve
+against the process working directory when `run/2` is called. The plan's arguments are passed directly to
+the executable without a shell, and its working directory is honored.
+
+Execution is synchronous and may block until Apalache and its SMT solver terminate. Victoria enforces no
+timeout, inherits the caller's process environment, and retains the exclusively reserved run directory on
+success and failure. The call preserves complete merged process output and the raw exit status. A successful
+result may have a nonzero exit status when Apalache produced counterexample traces: success means that one or
+more top-level ITF artifacts were discovered and every one passed `Victoria.Trace.load/1` validation.
+
+Result traces are plural, lexically ordered by their absolute artifact paths, and loaded all-or-nothing.
+`Victoria.Apalache.run/2` only materializes traces; it does not replay them or verify an implementation.
+Callers choose explicitly which returned traces to pass to `Victoria.verify/2`.
 
 Run names combine a UTC timestamp, a slug derived from the `.tla` basename, and a caller-supplied
 six-character lowercase hexadecimal suffix. Given the same inputs, naming and planning are deterministic.
-Victoria intends to support the latest stable Apalache release, but Phase 1.1 has no version field and does
-not locate or enforce a version.
-
-Future execution results will represent generated traces in the plural. Phase 1.2 must preserve the
-underlying `Victoria.ITF.Error` when trace loading fails; whether that error is returned directly or wrapped
-will be decided with the execution result and error contracts.
+Planning remains pure and version-free; `Victoria.Apalache.run/2` is the execution boundary that pins
+v0.58.3.
 
 ## Fixed-trace replay
 
@@ -115,10 +129,10 @@ their TLC-style Apalache configs belong in `test/specs`. Generated checker work 
 
 ## Deferred work
 
-The current boundary does not include `Model.spec/0`, Victoria-owned Apalache execution, executable or
-version discovery and enforcement, generated trace discovery and loading, execution result and error
-contracts, lasso execution, rich tagged values beyond `#bigint`, shrinking, random testing, advanced
-generated-trace testing, or executable reference models.
+The current boundary does not include `Model.spec/0`, a `Victoria.generate/…` convenience, automatic
+implementation verification, timeouts, cancellation, Docker support, environment overrides, artifact
+cleanup, retries, campaigns, lasso execution, rich tagged values beyond `#bigint`, shrinking, random
+testing, advanced generated-trace testing, or executable reference models.
 
 ## Prior Art
 

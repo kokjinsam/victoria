@@ -1,0 +1,82 @@
+#!/bin/sh
+
+name=${0##*/}
+
+if [ "${1-}" = "version" ]; then
+  case "$name" in
+    *unsupported*) printf '0.58.2\n' ;;
+    *prefixed*) printf '\n  v0.58.3  \n\n' ;;
+    *banner*) printf 'Apalache\n0.58.3\n' ;;
+    *prerelease*) printf '0.58.3-rc.1\n' ;;
+    *build-version*) printf '0.58.3+fixture\n' ;;
+    *empty-version*) printf '\n\n' ;;
+    *invalid-version*) printf '\377version\n' ;;
+    *version-fail*) printf 'version failed\n' >&2; exit 7 ;;
+    *start-fail*) printf '0.58.3\n'; chmod -x "$0" ;;
+    *) printf '0.58.3\n' ;;
+  esac
+  exit 0
+fi
+
+run_directory=
+for argument in "$@"; do
+  case "$argument" in
+    --run-dir=*) run_directory=${argument#--run-dir=} ;;
+  esac
+done
+
+if [ -z "$run_directory" ]; then
+  printf 'missing run directory\n' >&2
+  exit 64
+fi
+
+script_directory=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+pwd > "$run_directory/working-directory.txt"
+printf '%s\n' "$@" > "$run_directory/argv.txt"
+printf 'standard output\n'
+printf 'standard error\n' >&2
+
+case "$name" in
+  *no-trace-nonzero*) exit 9 ;;
+  *no-trace*) exit 0 ;;
+  *invalid*) cp "$script_directory/malformed.itf.json" "$run_directory/invalid.itf.json" ;;
+  *bad-value*) cp "$script_directory/unsupported.itf.json" "$run_directory/unsupported.itf.json" ;;
+  *mixed*)
+    cp "$script_directory/valid.itf.json" "$run_directory/a-valid.itf.json"
+    cp "$script_directory/malformed.itf.json" "$run_directory/b-invalid.itf.json"
+    ;;
+  *multiple*)
+    cp "$script_directory/valid.itf.json" "$run_directory/z.itf.json"
+    cp "$script_directory/valid.itf.json" "$run_directory/a.itf.json"
+    ;;
+  *lasso*) cp "$script_directory/loop.itf.json" "$run_directory/loop.itf.json" ;;
+  *discovery-types*)
+    cp "$script_directory/valid.itf.json" "$run_directory/regular.itf.json"
+    mkdir "$run_directory/directory.itf.json"
+    ln -s "$script_directory/valid.itf.json" "$run_directory/symlink.itf.json"
+    ;;
+  *long-output*)
+    index=0
+    while [ "$index" -lt 6000 ]; do
+      printf x
+      index=$((index + 1))
+    done
+    exit 0
+    ;;
+  *multibyte-boundary*)
+    printf '\342\202\254'
+    index=0
+    while [ "$index" -lt 4094 ]; do
+      printf x
+      index=$((index + 1))
+    done
+    exit 0
+    ;;
+  *short-bad-bytes*) printf '\377\376'; exit 0 ;;
+  *) cp "$script_directory/valid.itf.json" "$run_directory/trace.itf.json" ;;
+esac
+
+case "$name" in
+  *nonzero*) exit 12 ;;
+  *) exit 0 ;;
+esac
