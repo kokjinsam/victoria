@@ -1,16 +1,17 @@
 defmodule Victoria.Runner do
   @moduledoc "Sequential fixed-trace replay."
 
-  alias Victoria.ITF
   alias Victoria.Runner.Failure
   alias Victoria.Runner.Report
+  alias Victoria.Trace
 
-  @spec replay(Path.t(), module()) :: {:ok, Report.t()} | {:error, Failure.t()}
-  def replay(trace_path, model) do
-    case ITF.load(trace_path) do
-      {:ok, [initial | steps]} -> initialize(trace_path, model, initial, steps)
-      {:error, error} -> {:error, trace_failure(trace_path, model, error)}
-    end
+  @spec replay(Trace.t(), module()) :: {:ok, Report.t()} | {:error, Failure.t()}
+  def replay(%Trace{source: trace_path, loop_index: nil, steps: [initial | steps]}, model) do
+    initialize(trace_path, model, initial, steps)
+  end
+
+  def replay(%Trace{source: trace_path, loop_index: loop_index}, model) when is_integer(loop_index) do
+    {:error, failure(trace_path, model, :trace_validation, {:unsupported_lasso, loop_index})}
   end
 
   defp initialize(trace_path, model, initial, steps) do
@@ -146,17 +147,6 @@ defmodule Victoria.Runner do
 
   defp cleanup_implementation({:ok, implementation, _count}), do: implementation
   defp cleanup_implementation({:error, _failure, implementation}), do: implementation
-
-  defp trace_failure(trace_path, model, error) do
-    %Failure{
-      trace_path: trace_path,
-      model: model,
-      phase: :trace_loading,
-      reason: error,
-      step_index: error.state_index,
-      action: error.action
-    }
-  end
 
   defp failure(trace_path, model, phase, reason, step \\ nil, expected \\ nil, observed \\ nil) do
     %Failure{

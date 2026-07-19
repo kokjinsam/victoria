@@ -1,7 +1,7 @@
 defmodule Victoria.RunnerTest do
   use ExUnit.Case, async: true
 
-  alias Victoria.ITF.Error
+  alias Victoria.ITF
   alias Victoria.Runner
   alias Victoria.Runner.Failure
   alias Victoria.Runner.Report
@@ -17,9 +17,52 @@ defmodule Victoria.RunnerTest do
   alias Victoria.Test.TrackingCounterModel
 
   @fixtures Path.expand("fixtures", __DIR__)
+  @traces Path.expand("traces", __DIR__)
 
-  test "replays a fixed Counter trace sequentially" do
-    trace_path = fixture("counter.itf.json")
+  defmodule NumericProjectionModel do
+    @moduledoc false
+    @behaviour Victoria.Model
+
+    @impl Victoria.Model
+    defdelegate init(state), to: CounterModel
+
+    @impl Victoria.Model
+    defdelegate execute(step, counter), to: CounterModel
+
+    @impl Victoria.Model
+    defdelegate snapshot(counter), to: CounterModel
+
+    @impl Victoria.Model
+    def project(%Victoria.Step{action: "Initial", state: state}), do: state
+    def project(%Victoria.Step{state: %{"count" => count}}), do: %{"count" => count * 1.0}
+
+    @impl Victoria.Model
+    defdelegate cleanup(counter), to: CounterModel
+  end
+
+  defmodule ParameterModel do
+    @moduledoc false
+    @behaviour Victoria.Model
+
+    @impl Victoria.Model
+    def init(state) do
+      send(self(), {:initialized_with, state})
+      {:ok, state}
+    end
+
+    @impl Victoria.Model
+    def execute(%Victoria.Step{state: state}, _implementation), do: {:ok, state}
+
+    @impl Victoria.Model
+    def snapshot(state), do: state
+
+    @impl Victoria.Model
+    def project(%Victoria.Step{state: state}), do: state
+  end
+
+  test "replays real Apalache output through the complete Counter vertical slice" do
+    trace_path = Path.join(@traces, "counter.itf.json")
+    assert {:ok, trace} = ITF.load(trace_path)
 
     assert {:ok,
             %Report{
@@ -27,7 +70,22 @@ defmodule Victoria.RunnerTest do
               model: CounterModel,
               step_count: 4,
               executed_count: 3
-            }} = Runner.replay(trace_path, CounterModel)
+            }} = Runner.replay(trace, CounterModel)
+  end
+
+  test "passes normalized parameters and variables together to Model.init/1" do
+    assert {:ok, %Report{step_count: 2, executed_count: 1}} =
+             replay("formal_values.itf.json", ParameterModel)
+
+    assert_received {:initialized_with,
+                     %{
+                       "Limit" => 123,
+                       "value" => %{
+                         "opaque" => "UNIT",
+                         "uninterpreted" => "Node(1)",
+                         "nested" => [true, %{"number" => -12}]
+                       }
+                     }}
   end
 
   test "threads the opaque implementation and cleans up its final value once" do
@@ -39,6 +97,7 @@ defmodule Victoria.RunnerTest do
 
   test "reports an exact initial refinement mismatch and never executes Initial" do
     trace_path = fixture("counter_initial_mismatch.itf.json")
+    assert {:ok, trace} = ITF.load(trace_path)
 
     assert {:error,
             %Failure{
@@ -49,13 +108,14 @@ defmodule Victoria.RunnerTest do
               action: "Initial",
               expected: %{"count" => 3},
               observed: %{"count" => 4}
-            }} = Runner.replay(trace_path, InitialMismatchModel)
+            }} = Runner.replay(trace, InitialMismatchModel)
 
     refute_received :initial_was_executed
   end
 
   test "stops at the first step refinement mismatch and renders useful context" do
     trace_path = fixture("counter_step_mismatch.itf.json")
+    assert {:ok, trace} = ITF.load(trace_path)
 
     assert {:error,
             %Failure{
@@ -66,7 +126,7 @@ defmodule Victoria.RunnerTest do
               action: "Increment",
               expected: %{"count" => 2},
               observed: %{"count" => 0}
-            } = failure} = Runner.replay(trace_path, BrokenCounterModel)
+            } = failure} = Runner.replay(trace, BrokenCounterModel)
 
     message = Exception.message(failure)
     assert message =~ "Victoria refinement failure"
@@ -78,19 +138,35 @@ defmodule Victoria.RunnerTest do
     assert message =~ "Trace:\n  #{trace_path}"
   end
 
-  test "rejects a stutter before initialization or duplicate execution" do
+  test "rejects a lasso before init, execute, or cleanup" do
+    assert {:ok, trace} = "loop.itf.json" |> fixture() |> ITF.load()
+
     assert {:error,
             %Failure{
-              phase: :trace_loading,
-              reason: %Error{
-                kind: :shape,
-                reason: :unsupported_stutter,
-                state_index: 2,
-                action: "Increment"
-              },
-              step_index: 2,
-              action: "Increment"
-            }} = replay("counter_stutter.itf.json", TrackingCounterModel)
+              phase: :trace_validation,
+              reason: {:unsupported_lasso, 1},
+              step_index: nil,
+              action: nil
+            }} = Runner.replay(trace, TrackingCounterModel)
+
+    refute_received :init
+    refute_received {:execute, _index, _action}
+    refute_received :cleanup
+  end
+
+  test "rejects a parameterized initial stutter before init, execute, or cleanup" do
+    result =
+      with {:ok, trace} <- "parameterized_initial_stutter.itf.json" |> fixture() |> ITF.load() do
+        Runner.replay(trace, TrackingCounterModel)
+      end
+
+    assert {:error,
+            %ITF.Error{
+              reason: :unsupported_stutter,
+              state_index: 1,
+              action: "Initial",
+              path: ["states", 1]
+            }} = result
 
     refute_received :init
     refute_received {:execute, _index, _action}
@@ -157,52 +233,19 @@ defmodule Victoria.RunnerTest do
     refute_received :cleanup
   end
 
-  test "returns a structured ITF read error" do
-    trace_path = fixture("missing.itf.json")
-
-    assert {:error,
-            %Failure{
-              trace_path: ^trace_path,
-              phase: :trace_loading,
-              reason: %Error{kind: :read, reason: :enoent}
-            }} = Runner.replay(trace_path, CounterModel)
-  end
-
   test "uses exact equality for refinement comparisons" do
     assert {:error,
             %Failure{
               phase: :step_refinement,
               expected: %{"count" => 1.0},
               observed: %{"count" => 1}
-            }} = replay("counter_numeric_type_mismatch.itf.json", CounterModel)
-  end
-
-  test "rejects malformed and unsupported ITF inputs explicitly" do
-    assert {:error, %Failure{phase: :trace_loading, reason: %Error{kind: :decode}}} =
-             replay("malformed_json.itf.json", CounterModel)
-
-    assert {:error,
-            %Failure{
-              phase: :trace_loading,
-              reason: %Error{
-                kind: :shape,
-                reason: :last_transition_must_be_a_string,
-                state_index: 1
-              }
-            }} = replay("malformed_state.itf.json", CounterModel)
-
-    assert {:error,
-            %Failure{
-              phase: :trace_loading,
-              reason: %Error{
-                kind: :shape,
-                reason: {:unsupported_typed_value, "#bigint"},
-                state_index: 0,
-                action: "Initial"
-              }
-            }} = replay("counter_typed_value.itf.json", CounterModel)
+            }} = replay("counter.itf.json", NumericProjectionModel)
   end
 
   defp fixture(name), do: Path.join(@fixtures, name)
-  defp replay(name, model), do: name |> fixture() |> Runner.replay(model)
+
+  defp replay(name, model) do
+    assert {:ok, trace} = name |> fixture() |> ITF.load()
+    Runner.replay(trace, model)
+  end
 end

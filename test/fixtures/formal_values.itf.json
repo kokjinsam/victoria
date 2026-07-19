@@ -1,0 +1,22 @@
+{
+  "#meta": {"source": "synthetic"},
+  "params": ["Limit"],
+  "vars": ["value", "lastTransition"],
+  "states": [
+    {
+      "#meta": {"index": 0, "ignored": "state metadata"},
+      "Limit": {"#bigint": "123"},
+      "value": {
+        "opaque": "UNIT",
+        "uninterpreted": "Node(1)",
+        "nested": [true, {"number": {"#bigint": "-12"}}]
+      },
+      "lastTransition": "Initial"
+    },
+    {
+      "#meta": {"index": 1},
+      "value": "done",
+      "lastTransition": "Complete"
+    }
+  ]
+}

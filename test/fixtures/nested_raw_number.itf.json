@@ -1,0 +1,11 @@
+{
+  "#meta": {},
+  "vars": ["value", "lastTransition"],
+  "states": [
+    {
+      "#meta": {"index": 0},
+      "value": {"items": ["ok", {"count": 7}]},
+      "lastTransition": "Initial"
+    }
+  ]
+}

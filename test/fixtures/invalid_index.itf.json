@@ -1,0 +1,7 @@
+{
+  "#meta": {},
+  "vars": ["count", "lastTransition"],
+  "states": [
+    {"#meta": {"index": 1}, "count": {"#bigint": "0"}, "lastTransition": "Initial"}
+  ]
+}

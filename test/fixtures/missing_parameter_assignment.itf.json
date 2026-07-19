@@ -1,0 +1,8 @@
+{
+  "#meta": {},
+  "params": ["Limit"],
+  "vars": ["value", "lastTransition"],
+  "states": [
+    {"#meta": {"index": 0}, "value": "ready", "lastTransition": "Initial"}
+  ]
+}

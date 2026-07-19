@@ -1,0 +1,6 @@
+{
+  "#meta": {},
+  "params": ["value"],
+  "vars": ["value", "lastTransition"],
+  "states": []
+}

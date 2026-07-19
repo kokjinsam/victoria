@@ -1,0 +1,7 @@
+{
+  "#meta": {},
+  "vars": ["value", "lastTransition"],
+  "states": [
+    {"#meta": {"index": 0}, "value": {"#bigint": "+1"}, "lastTransition": "Initial"}
+  ]
+}

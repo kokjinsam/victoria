@@ -1,0 +1,18 @@
+{
+  "#meta": {"format": "ITF", "source": "Parameterized.tla"},
+  "params": ["Limit"],
+  "vars": ["count", "lastTransition"],
+  "states": [
+    {
+      "#meta": {"index": 0},
+      "Limit": {"#bigint": "10"},
+      "count": {"#bigint": "0"},
+      "lastTransition": "Initial"
+    },
+    {
+      "#meta": {"index": 1},
+      "count": {"#bigint": "0"},
+      "lastTransition": "Initial"
+    }
+  ]
+}

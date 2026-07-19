@@ -15,7 +15,7 @@ defmodule Victoria.Runner.Failure do
   ]
 
   @type phase ::
-          :trace_loading
+          :trace_validation
           | :initialization
           | :initial_refinement
           | :execution
