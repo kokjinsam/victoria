@@ -6,12 +6,12 @@ Victoria replays one fixed ITF trace against one model, sequentially, and stops 
 
 ## Fixed-trace replay
 
-Load and validate the ITF document first, then replay the resulting `Victoria.Trace`:
+Load and validate an ITF document through the public trace API:
 
 ```elixir
-case Victoria.ITF.load("test/traces/counter.itf.json") do
+case Victoria.Trace.load("test/traces/counter.itf.json") do
   {:ok, trace} ->
-    case Victoria.Runner.replay(trace, MyCounterModel) do
+    case Victoria.verify(MyCounterModel, trace: trace) do
       {:ok, report} -> IO.inspect(report)
       {:error, failure} -> IO.puts(Exception.message(failure))
     end
@@ -19,6 +19,27 @@ case Victoria.ITF.load("test/traces/counter.itf.json") do
   {:error, error} ->
     IO.puts(Exception.message(error))
 end
+```
+
+`Victoria.verify/2` accepts either a path or an existing validated `Victoria.Trace`:
+
+```elixir
+{:ok, report} = Victoria.verify(MyCounterModel, trace: "test/traces/counter.itf.json")
+{:ok, report} = Victoria.verify(MyCounterModel, trace: trace)
+```
+
+It returns `{:ok, %Victoria.Runner.Report{}}` when the trace conforms, an
+`{:error, %Victoria.ITF.Error{}}` when loading fails, or an
+`{:error, %Victoria.Runner.Failure{}}` when replay fails. Loading and verification errors retain their
+existing `Exception.message/1` renderers.
+
+In ExUnit tests, import the plain assertion function. It returns `:ok` on success and converts either
+error into an `ExUnit.AssertionError` using the same rendering:
+
+```elixir
+import Victoria.ExUnit
+
+:ok = assert_conform(MyCounterModel, trace: "test/traces/counter.itf.json")
 ```
 
 Every raw state must contain a string `"lastTransition"` field. Victoria turns that field into
@@ -54,7 +75,7 @@ their TLC-style Apalache configs belong in `test/specs`. Generated checker work 
 
 ## Deferred work
 
-The current boundary does not include `Victoria.assert_conform/2`, `Victoria.Spec`, `Model.spec/0`,
+The current boundary does not include `Victoria.Spec`, `Model.spec/0`,
 Victoria-owned Apalache invocation or trace generation, lasso execution, rich tagged values beyond
 `#bigint`, shrinking, random testing, or executable reference models.
 
