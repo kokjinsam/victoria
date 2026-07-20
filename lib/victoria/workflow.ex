@@ -1,5 +1,11 @@
 defmodule Victoria.Workflow do
-  @moduledoc "Runs Apalache and verifies every materialized trace against one model."
+  @moduledoc """
+  Runs Apalache and verifies every materialized trace against one model.
+
+  Traces are verified sequentially in materialization order with a fresh model
+  lifecycle for each trace. Verification stops at the first failure. The call
+  is synchronous, has no Victoria timeout, and retains Apalache artifacts.
+  """
 
   alias Victoria.Apalache
   alias Victoria.Apalache.Plan
@@ -18,6 +24,7 @@ defmodule Victoria.Workflow do
   @artifact_options [:root]
 
   @spec run(module(), Spec.t(), keyword()) :: {:ok, Result.t()} | {:error, Error.t()}
+  @doc "Runs a generated conformance workflow from a validated spec and plan options."
   def run(model, spec, options) do
     {plan_options, apalache_options, artifact_options} = validate_options!(options)
     validate_model!(model)

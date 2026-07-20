@@ -37,6 +37,7 @@ defmodule Victoria.ExUnit do
   alias Victoria.Workflow
 
   @spec assert_conform(module(), trace: Path.t() | Victoria.Trace.t()) :: :ok
+  @doc "Verifies one fixed trace and raises `ExUnit.AssertionError` on controlled failure."
   def assert_conform(model, options) do
     case Victoria.verify(model, options) do
       {:ok, %Victoria.Runner.Report{}} -> :ok
@@ -46,6 +47,7 @@ defmodule Victoria.ExUnit do
   end
 
   @spec assert_conform(module(), Spec.t(), keyword()) :: :ok
+  @doc "Runs a generated workflow and raises `ExUnit.AssertionError` on controlled failure."
   def assert_conform(model, spec, workflow_options) do
     case Workflow.run(model, spec, workflow_options) do
       {:ok, %Workflow.Result{}} -> :ok

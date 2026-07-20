@@ -1,5 +1,10 @@
 defmodule Victoria do
-  @moduledoc "Public developer workflow for fixed-trace verification."
+  @moduledoc """
+  The primary API for verifying one fixed formal trace.
+
+  Use `verify/2` with either an ITF path or an already loaded `Victoria.Trace`.
+  Generated conformance workflows are provided by `Victoria.Workflow`.
+  """
 
   alias Victoria.ITF
   alias Victoria.Runner
@@ -9,6 +14,13 @@ defmodule Victoria do
 
   @spec verify(module(), trace: Path.t() | Trace.t()) ::
           {:ok, Report.t()} | {:error, ITF.Error.t() | Failure.t()}
+  @doc """
+  Replays one validated trace against `model`.
+
+  Returns a `Victoria.Runner.Report` on conformance. ITF loading and controlled
+  replay failures are returned as structured errors. Invalid options raise
+  `ArgumentError`.
+  """
   def verify(model, options) do
     case options do
       [trace: %Trace{} = trace] -> Runner.replay(trace, model)

@@ -1,1 +1,1 @@
-ExUnit.start(exclude: [:apalache])
+ExUnit.start(exclude: [:apalache, :consumer])

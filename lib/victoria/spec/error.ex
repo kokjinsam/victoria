@@ -1,18 +1,24 @@
 defmodule Victoria.Spec.Error do
   @moduledoc """
   Describes a filesystem validation failure for a Victoria specification.
+
+  Errors are returned by `Victoria.Spec.new/1` and should be treated as
+  read-only.
   """
 
   @enforce_keys [:field, :path, :reason]
   defexception [:field, :path, :reason]
 
+  @typedoc "The specification path that failed validation."
   @type field :: :source | :config
+  @typedoc "The filesystem or extension validation failure."
   @type reason ::
           :not_found
           | :not_a_regular_file
           | {:invalid_extension, String.t()}
           | {:filesystem, term()}
 
+  @typedoc "A structured specification-path failure."
   @type t :: %__MODULE__{
           field: field(),
           path: Path.t(),

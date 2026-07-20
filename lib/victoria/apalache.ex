@@ -1,5 +1,11 @@
 defmodule Victoria.Apalache do
-  @moduledoc "Runs a validated Apalache plan and materializes every generated ITF trace."
+  @moduledoc """
+  Runs a validated Apalache plan and materializes every generated ITF trace.
+
+  Execution is synchronous, supports exactly Apalache v0.58.3, invokes the
+  executable without a shell, and retains the exclusively reserved run
+  directory on success and failure. Victoria imposes no runtime timeout.
+  """
 
   alias Victoria.Apalache.Error
   alias Victoria.Apalache.Manifest
@@ -11,6 +17,14 @@ defmodule Victoria.Apalache do
   @supported_version Version.parse!("0.58.3")
 
   @spec run(Plan.t(), keyword()) :: {:ok, Result.t()} | {:error, Error.t()}
+  @doc """
+  Executes `plan` with Apalache v0.58.3.
+
+  The only option is `:executable`. A successful result means at least one
+  top-level regular ITF file was discovered and every discovered trace loaded;
+  Apalache may have returned a nonzero status. Invalid arguments raise
+  `ArgumentError`.
+  """
   def run(plan, options \\ [])
 
   def run(%Plan{} = plan, options) do

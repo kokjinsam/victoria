@@ -1,6 +1,9 @@
 defmodule Victoria.Apalache.RunDirectory do
   @moduledoc """
   Builds deterministic, caller-owned Apalache run directory paths.
+
+  This module only builds a path. `Victoria.Apalache.run/2` exclusively reserves
+  it and never reuses or empties an existing directory.
   """
 
   alias Victoria.Spec
@@ -9,6 +12,7 @@ defmodule Victoria.Apalache.RunDirectory do
   @suffix_pattern ~r/\A[0-9a-f]{6}\z/
 
   @spec build(Spec.t(), keyword()) :: Path.t()
+  @doc "Builds an absolute run path from a UTC timestamp, spec slug, suffix, and optional root."
   def build(%Spec{} = spec, options) do
     validate_options!(options)
 

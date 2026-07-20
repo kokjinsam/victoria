@@ -1,6 +1,9 @@
 defmodule Victoria.Apalache.Plan do
   @moduledoc """
   Describes a pure, non-executing Apalache invocation plan.
+
+  Construct plans with `new/2`. Direct struct construction bypasses argument
+  and path validation.
   """
 
   alias Victoria.Spec
@@ -8,7 +11,9 @@ defmodule Victoria.Apalache.Plan do
   @enforce_keys [:spec, :mode, :working_directory, :run_directory, :options, :argv]
   defstruct [:spec, :mode, :working_directory, :run_directory, :options, :argv]
 
+  @typedoc "Supported Apalache operation."
   @type mode :: :simulate | :check
+  @typedoc "A validated, shell-free argv plan."
   @type t :: %__MODULE__{
           spec: Spec.t(),
           mode: mode(),
@@ -19,6 +24,7 @@ defmodule Victoria.Apalache.Plan do
         }
 
   @spec new(Spec.t(), keyword()) :: t()
+  @doc "Builds a deterministic invocation plan without executing Apalache."
   def new(%Spec{} = spec, options) do
     validate_options!(options)
 

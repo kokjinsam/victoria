@@ -1,6 +1,9 @@
 defmodule Victoria.Spec do
   @moduledoc """
   Identifies the source and optional configuration files for a TLA+ specification.
+
+  Construct specs with `new/1`; direct struct construction bypasses filesystem
+  and extension validation.
   """
 
   alias Victoria.Spec.Error
@@ -8,12 +11,14 @@ defmodule Victoria.Spec do
   @enforce_keys [:source]
   defstruct [:source, :config]
 
+  @typedoc "A validated TLA+ source and optional Apalache configuration."
   @type t :: %__MODULE__{
           source: Path.t(),
           config: Path.t() | nil
         }
 
   @spec new(keyword()) :: {:ok, t()} | {:error, Error.t()}
+  @doc "Validates source/config paths and returns a specification reference."
   def new(options) do
     validate_options!(options)
 

@@ -1,5 +1,11 @@
 defmodule Victoria.Trace do
-  @moduledoc "A validated, normalized formal trace."
+  @moduledoc """
+  A validated, normalized formal trace.
+
+  Trace structs are returned by `load/1`; consumers should not construct them
+  directly because loading establishes the structural and value invariants
+  required by the runner.
+  """
 
   alias Victoria.ITF
   alias Victoria.Step
@@ -7,6 +13,7 @@ defmodule Victoria.Trace do
   @enforce_keys [:source, :metadata, :steps, :loop_index]
   defstruct [:source, :metadata, :steps, :loop_index]
 
+  @typedoc "Normalized trace metadata retained from the ITF document."
   @type metadata :: %{
           variables: [String.t()],
           parameters: [String.t()],
@@ -14,6 +21,7 @@ defmodule Victoria.Trace do
           itf: map()
         }
 
+  @typedoc "A finite trace, or a loaded lasso trace that replay will reject."
   @type t :: %__MODULE__{
           source: Path.t(),
           metadata: metadata(),
@@ -22,5 +30,6 @@ defmodule Victoria.Trace do
         }
 
   @spec load(Path.t()) :: {:ok, t()} | {:error, ITF.Error.t()}
+  @doc "Loads and validates the supported ITF subset from `path`."
   defdelegate load(path), to: ITF
 end

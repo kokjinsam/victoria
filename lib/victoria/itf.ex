@@ -1,15 +1,25 @@
 defmodule Victoria.ITF do
-  @moduledoc "Loads the supported subset of the Informal Trace Format."
+  @moduledoc """
+  Loads Victoria's intentionally limited subset of the Informal Trace Format.
+
+  Advanced consumers may call `load/1` directly; `Victoria.Trace.load/1` is the
+  preferred public entry point.
+  """
 
   alias Victoria.Step
   alias Victoria.Trace
 
   defmodule Error do
-    @moduledoc "A structured ITF read, decode, or validation error."
+    @moduledoc """
+    A structured ITF read, decode, or validation error.
+
+    Errors are returned by the loader and should be treated as read-only.
+    """
 
     @enforce_keys [:source, :kind, :reason, :path]
     defexception [:source, :kind, :reason, :path, :state_index, :action]
 
+    @typedoc "An ITF error with source and nested value-path context."
     @type t :: %__MODULE__{
             source: Path.t(),
             kind: :read | :decode | :shape,
@@ -36,6 +46,7 @@ defmodule Victoria.ITF do
   @unsupported_tags ~w(#set #tup #map #unserializable)
 
   @spec load(Path.t()) :: {:ok, Trace.t()} | {:error, Error.t()}
+  @doc "Loads `path`, validates the supported ITF subset, and returns a normalized trace."
   def load(path) do
     with {:ok, contents} <- read(path),
          {:ok, decoded} <- decode(contents, path),

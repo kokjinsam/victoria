@@ -1,5 +1,10 @@
 defmodule Victoria.Apalache.Result do
-  @moduledoc "The complete context of a successful Apalache trace materialization."
+  @moduledoc """
+  Complete context returned after successful Apalache trace materialization.
+
+  Results are constructed by Victoria and should be treated as read-only. The
+  `output` field contains complete raw subprocess bytes and may not be UTF-8.
+  """
 
   alias Victoria.Apalache.Plan
   alias Victoria.Trace
@@ -7,6 +12,7 @@ defmodule Victoria.Apalache.Result do
   @enforce_keys [:plan, :executable, :version, :exit_status, :output, :trace_paths, :traces]
   defstruct [:plan, :executable, :version, :exit_status, :output, :trace_paths, :traces]
 
+  @typedoc "A materialized run with ordered trace paths and loaded traces."
   @type t :: %__MODULE__{
           plan: Plan.t(),
           executable: Path.t(),

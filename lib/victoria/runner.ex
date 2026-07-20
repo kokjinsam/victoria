@@ -1,5 +1,10 @@
 defmodule Victoria.Runner do
-  @moduledoc "Sequential fixed-trace replay."
+  @moduledoc """
+  Sequentially replays a validated trace through a `Victoria.Model` lifecycle.
+
+  This is the lower-level replay API. Most consumers should use
+  `Victoria.verify/2`.
+  """
 
   alias Victoria.Runner.Failure
   alias Victoria.Runner.Report
@@ -8,6 +13,7 @@ defmodule Victoria.Runner do
   alias Victoria.Verifier
 
   @spec replay(Trace.t(), module()) :: {:ok, Report.t()} | {:error, Failure.t()}
+  @doc "Replays `trace` against `model`, returning a report or controlled failure."
   def replay(%Trace{source: trace_path, loop_index: nil, steps: [initial | steps]}, model) do
     initialize(trace_path, model, initial, steps)
   end

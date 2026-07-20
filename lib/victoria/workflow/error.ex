@@ -1,5 +1,11 @@
 defmodule Victoria.Workflow.Error do
-  @moduledoc "A contextual conformance-workflow failure."
+  @moduledoc """
+  A contextual conformance-workflow failure.
+
+  Errors are constructed by Victoria and should be treated as read-only.
+  Verification failures retain earlier successful verifications and the full
+  Apalache result.
+  """
 
   alias Victoria.Apalache
   alias Victoria.Apalache.Output
@@ -17,7 +23,9 @@ defmodule Victoria.Workflow.Error do
     completed_verifications: []
   ]
 
+  @typedoc "The workflow phase that failed."
   @type phase :: :run_directory | :apalache | :verification
+  @typedoc "A run-directory, Apalache, or implementation-verification failure."
   @type t :: %__MODULE__{
           phase: phase(),
           reason: term(),

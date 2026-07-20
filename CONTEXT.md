@@ -13,7 +13,7 @@
 - **Trace materialization** — discovery of generated top-level ITF files and all-or-nothing conversion of
   every discovered file into validated Victoria traces.
 - **Supported Apalache version** — the exact Apalache release validated by the current Victoria release;
-  Phase 1.2 supports v0.58.3.
+  Victoria 0.1.0 supports v0.58.3.
 - **Run directory** — the exclusively reserved location assigned to one Apalache operation; its artifacts
   survive successful and failed materialization.
 - **Run manifest** — the `victoria-run.json` document recording the plan, execution context, artifacts, and

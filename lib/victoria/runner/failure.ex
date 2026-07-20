@@ -1,6 +1,10 @@
 # credo:disable-for-next-line Credo.Check.Consistency.ExceptionNames
 defmodule Victoria.Runner.Failure do
-  @moduledoc "Structured failure returned by fixed-trace replay."
+  @moduledoc """
+  Structured failure returned by fixed-trace replay.
+
+  Failures are constructed by Victoria and should be treated as read-only.
+  """
 
   @enforce_keys [:trace_path, :model, :phase, :reason]
   defexception [
@@ -15,6 +19,7 @@ defmodule Victoria.Runner.Failure do
     :cleanup_error
   ]
 
+  @typedoc "The lifecycle phase that failed."
   @type phase ::
           :trace_validation
           | :initialization
@@ -25,6 +30,7 @@ defmodule Victoria.Runner.Failure do
           | :step_verification
           | :cleanup
 
+  @typedoc "A controlled replay failure with trace and callback context."
   @type t :: %__MODULE__{
           trace_path: Path.t(),
           model: module(),

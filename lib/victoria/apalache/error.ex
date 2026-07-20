@@ -1,5 +1,11 @@
 defmodule Victoria.Apalache.Error do
-  @moduledoc "A structured Apalache execution or trace-materialization failure."
+  @moduledoc """
+  A structured Apalache execution or trace-materialization failure.
+
+  Errors are constructed by Victoria and should be treated as read-only. Raw
+  output is retained in the struct; `Exception.message/1` renders only a
+  bounded, binary-safe tail.
+  """
 
   alias Victoria.Apalache.Output
   alias Victoria.Apalache.Plan
@@ -16,6 +22,7 @@ defmodule Victoria.Apalache.Error do
     manifest_failure: nil
   ]
 
+  @typedoc "The Apalache boundary phase that failed."
   @type phase ::
           :executable_discovery
           | :version_probe
@@ -26,6 +33,7 @@ defmodule Victoria.Apalache.Error do
           | :trace_loading
           | :manifest
 
+  @typedoc "An Apalache failure with plan, process, artifact, and manifest context."
   @type t :: %__MODULE__{
           phase: phase(),
           reason: term(),
