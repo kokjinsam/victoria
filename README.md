@@ -49,6 +49,22 @@ success and failure. The call preserves complete merged process output and the r
 result may have a nonzero exit status when Apalache produced counterexample traces: success means that one or
 more top-level ITF artifacts were discovered and every one passed `Victoria.Trace.load/1` validation.
 
+Every successfully reserved run directory receives `victoria-run.json`. Victoria commits a `running`
+manifest before starting Apalache and replaces it with a `completed` manifest after execution and trace
+materialization. A completed outcome is `materialized` when one or more valid traces were loaded, including
+when Apalache exited nonzero, and `failed` when execution or materialization failed. Manifest trace paths are
+relative to the run directory; `%Victoria.Apalache.Result{}` continues to carry absolute trace paths and the
+complete raw output bytes. The manifest stores only a valid UTF-8 diagnostic tail of at most 4 KiB together
+with the complete output byte size and a truncation flag.
+
+Manifest replacement writes a complete temporary document in the run directory and renames it over the
+previous document, so observers do not see partially written JSON. This atomic-visibility guarantee does not
+include file or directory `fsync` and therefore is not a power-loss durability guarantee. Victoria retains
+completed, failed, and interrupted artifacts. It does not recover or resume a directory whose manifest
+remains `running`, and it provides no timeout or cancellation. The manifest records no environment data.
+Formal artifact paths and Apalache arguments are recorded as supplied by the validated plan, so callers
+should not place secrets in paths or command-line options without a separate redaction design.
+
 Result traces are plural, lexically ordered by their absolute artifact paths, and loaded all-or-nothing.
 `Victoria.Apalache.run/2` only materializes traces; it does not replay them or verify an implementation.
 Callers choose explicitly which returned traces to pass to `Victoria.verify/2`.

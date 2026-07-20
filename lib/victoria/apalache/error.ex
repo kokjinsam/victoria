@@ -1,9 +1,8 @@
 defmodule Victoria.Apalache.Error do
   @moduledoc "A structured Apalache execution or trace-materialization failure."
 
+  alias Victoria.Apalache.Output
   alias Victoria.Apalache.Plan
-
-  @output_tail_bytes 4096
 
   defexception [
     :phase,
@@ -13,7 +12,8 @@ defmodule Victoria.Apalache.Error do
     :version,
     :exit_status,
     :output,
-    trace_paths: []
+    trace_paths: [],
+    manifest_failure: nil
   ]
 
   @type phase ::
@@ -24,6 +24,7 @@ defmodule Victoria.Apalache.Error do
           | :execution
           | :trace_discovery
           | :trace_loading
+          | :manifest
 
   @type t :: %__MODULE__{
           phase: phase(),
@@ -33,20 +34,22 @@ defmodule Victoria.Apalache.Error do
           version: Version.t() | nil,
           exit_status: non_neg_integer() | nil,
           output: binary() | nil,
-          trace_paths: [Path.t()]
+          trace_paths: [Path.t()],
+          manifest_failure: term() | nil
         }
 
   @impl Exception
   def message(%__MODULE__{} = error) do
     context = [
-      "Victoria Apalache #{error.phase} error: #{inspect(error.reason)}",
+      "Victoria Apalache #{error.phase} error: #{render_term(error.reason)}",
       plan_context(error.plan),
       optional("executable", error.executable),
       optional("version", error.version),
       run_directory_context(error.plan),
       optional("exit status", error.exit_status),
       trace_context(error.trace_paths),
-      output_context(error.output)
+      output_context(error.output),
+      manifest_failure_context(error.manifest_failure)
     ]
 
     context
@@ -76,28 +79,12 @@ defmodule Victoria.Apalache.Error do
   defp output_context(""), do: nil
 
   defp output_context(output) do
-    tail = safe_binary_tail(output, @output_tail_bytes)
+    {tail, _truncated?} = Output.tail(output)
     "output tail:\n#{tail}"
   end
 
-  defp safe_binary_tail(binary, maximum) do
-    tail = binary_tail(binary, maximum)
+  defp manifest_failure_context(nil), do: nil
+  defp manifest_failure_context(reason), do: "secondary manifest failure: #{render_term(reason)}"
 
-    cond do
-      String.valid?(tail) -> tail
-      String.valid?(binary) -> trim_to_codepoint_boundary(tail)
-      true -> inspect(tail, binaries: :as_binaries)
-    end
-  end
-
-  defp binary_tail(binary, maximum) when byte_size(binary) <= maximum, do: binary
-
-  defp binary_tail(binary, maximum) do
-    start = byte_size(binary) - maximum
-    binary_part(binary, start, maximum)
-  end
-
-  defp trim_to_codepoint_boundary(<<_byte, rest::binary>>) do
-    if String.valid?(rest), do: rest, else: trim_to_codepoint_boundary(rest)
-  end
+  defp render_term(term), do: term |> inspect() |> Output.tail() |> elem(0)
 end

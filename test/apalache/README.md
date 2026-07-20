@@ -11,6 +11,7 @@ wrapper around Apalache.
 | --- | ---: | --- |
 | `apalache-mc version` | 0 | Exact output `0.58.3\n` |
 | Pre-created empty `--run-dir` | 0 | Accepted for both `simulate` and `check`; Apalache populated the existing directory |
+| Pre-created nonempty `--run-dir` containing `victoria-run.json` | 0 | Placeholder manifest survived byte-for-byte unchanged; normal artifacts and `example.itf.json` plus `example1.itf.json` were produced |
 | `simulate --length=3 --max-run=1 --output-traces` | 0 | Top-level regular `example.itf.json` and `example1.itf.json` |
 | `simulate --length=3 --max-run=3 --output-traces` | 0 | Top-level regular `example.itf.json` and `example1.itf.json` through `example3.itf.json` |
 | Successful `check --length=3 --output-traces` | 0 | Top-level regular `example.itf.json` and `example0.itf.json` |
@@ -37,3 +38,21 @@ lasso fixture continues to characterize materialization without changing Runner'
 
 These observations support exclusive pre-creation of the exact planned run directory and top-level,
 lexically sorted, `File.lstat/1`-based discovery of names ending exactly in `.itf.json`.
+
+The nonempty-directory characterization was repeated on July 20, 2026 with this direct invocation after
+writing `{"placeholder":"victoria phase 1.2.1"}\n` to the requested run directory:
+
+```sh
+apalache-mc simulate \
+  --config=/Users/sammkj/Developer/packages/victoria/test/specs/Counter.cfg \
+  --length=3 \
+  --max-run=1 \
+  --output-traces \
+  --run-dir="$run_directory" \
+  /Users/sammkj/Developer/packages/victoria/test/specs/Counter.tla
+```
+
+The command exited 0. The manifest's SHA-256 was
+`e37db520a630551d848981f64e7ccf58ff87c88fbb37c2a5559e41abaf012f83` both before and after execution.
+Apalache also wrote its normal logs, generated source artifacts, and two top-level ITF traces. This proves
+that v0.58.3 tolerates Victoria committing a running manifest before process execution.

@@ -51,6 +51,12 @@ defmodule Victoria.ApalacheIntegrationTest do
     assert executable == Path.expand(context.executable)
     assert length(trace_paths) == length(traces)
 
+    manifest = read_manifest(run_directory)
+    assert manifest["status"] == "completed"
+    assert manifest["outcome"] == "materialized"
+    assert manifest["execution"]["exit_status"] == 0
+    assert manifest["artifacts"]["trace_paths"] == Enum.map(trace_paths, &Path.basename/1)
+
     for trace <- traces do
       assert {:ok, _report} = Victoria.verify(CounterModel, trace: trace)
     end
@@ -60,11 +66,13 @@ defmodule Victoria.ApalacheIntegrationTest do
     {source, config} = copy_spec(context.root, "Violation", @violation_source, @violation_config)
     {:ok, spec} = Spec.new(source: source, config: config)
 
+    run_directory = Path.join(context.root, "check-run")
+
     plan =
       Plan.new(spec,
         mode: :check,
         length: 3,
-        run_directory: Path.join(context.root, "check-run")
+        run_directory: run_directory
       )
 
     assert {:ok,
@@ -74,6 +82,11 @@ defmodule Victoria.ApalacheIntegrationTest do
               traces: [_trace | _traces] = traces
             }} =
              Apalache.run(plan)
+
+    manifest = read_manifest(run_directory)
+    assert manifest["status"] == "completed"
+    assert manifest["outcome"] == "materialized"
+    assert manifest["execution"]["exit_status"] == 12
 
     for trace <- traces do
       assert {:ok, _report} = Victoria.verify(CounterModel, trace: trace)
@@ -88,5 +101,12 @@ defmodule Victoria.ApalacheIntegrationTest do
     File.cp!(source, copied_source)
     File.cp!(config, copied_config)
     {copied_source, copied_config}
+  end
+
+  defp read_manifest(run_directory) do
+    run_directory
+    |> Path.join("victoria-run.json")
+    |> File.read!()
+    |> JSON.decode!()
   end
 end

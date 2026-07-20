@@ -2,6 +2,7 @@ defmodule Victoria.Apalache do
   @moduledoc "Runs a validated Apalache plan and materializes every generated ITF trace."
 
   alias Victoria.Apalache.Error
+  alias Victoria.Apalache.Manifest
   alias Victoria.Apalache.Plan
   alias Victoria.Apalache.Result
   alias Victoria.Trace
@@ -18,20 +19,8 @@ defmodule Victoria.Apalache do
     with {:ok, executable} <- resolve_executable(plan, executable_option),
          {:ok, version, version_output} <- probe_version(plan, executable),
          :ok <- require_supported_version(plan, executable, version, version_output),
-         :ok <- reserve_run_directory(plan, executable, version),
-         {:ok, output, exit_status} <- execute(plan, executable, version),
-         {:ok, trace_paths} <- discover_traces(plan, executable, version, output, exit_status),
-         {:ok, traces} <- load_traces(plan, executable, version, output, exit_status, trace_paths) do
-      {:ok,
-       %Result{
-         plan: plan,
-         executable: executable,
-         version: version,
-         exit_status: exit_status,
-         output: output,
-         trace_paths: trace_paths,
-         traces: traces
-       }}
+         :ok <- reserve_run_directory(plan, executable, version) do
+      run_reserved(plan, executable, version)
     end
   end
 
@@ -204,6 +193,78 @@ defmodule Victoria.Apalache do
         )
     end
   end
+
+  defp run_reserved(plan, executable, version) do
+    started_at = DateTime.utc_now()
+    manifest_path = Manifest.path(plan)
+    running_manifest = Manifest.running(plan, executable, version, started_at)
+
+    case Manifest.write(:initial, manifest_path, running_manifest) do
+      :ok ->
+        operation_result = execute_and_materialize(plan, executable, version)
+        completed_at = DateTime.utc_now()
+        completed_manifest = Manifest.completed(plan, executable, version, started_at, completed_at, operation_result)
+        finalize(operation_result, manifest_path, completed_manifest)
+
+      {:error, failure} ->
+        manifest_error(plan, executable, version, :initial, manifest_path, failure)
+    end
+  end
+
+  defp execute_and_materialize(plan, executable, version) do
+    with {:ok, output, exit_status} <- execute(plan, executable, version),
+         {:ok, trace_paths} <- discover_traces(plan, executable, version, output, exit_status),
+         {:ok, traces} <- load_traces(plan, executable, version, output, exit_status, trace_paths) do
+      {:ok,
+       %Result{
+         plan: plan,
+         executable: executable,
+         version: version,
+         exit_status: exit_status,
+         output: output,
+         trace_paths: trace_paths,
+         traces: traces
+       }}
+    end
+  end
+
+  defp finalize(operation_result, manifest_path, completed_manifest) do
+    case Manifest.write(:final, manifest_path, completed_manifest) do
+      :ok ->
+        operation_result
+
+      {:error, failure} ->
+        final_manifest_failure(operation_result, manifest_path, failure)
+    end
+  end
+
+  defp final_manifest_failure({:ok, %Result{} = result}, manifest_path, failure) do
+    manifest_error(result.plan, result.executable, result.version, :final, manifest_path, failure,
+      exit_status: result.exit_status,
+      output: result.output,
+      trace_paths: result.trace_paths
+    )
+  end
+
+  defp final_manifest_failure({:error, %Error{} = error}, manifest_path, failure) do
+    reason = manifest_reason(:final, manifest_path, failure)
+    {:error, %{error | manifest_failure: reason}}
+  end
+
+  defp manifest_error(plan, executable, version, stage, manifest_path, failure, fields \\ []) do
+    error(
+      plan,
+      :manifest,
+      manifest_reason(stage, manifest_path, failure),
+      Keyword.merge([executable: executable, version: version], fields)
+    )
+  end
+
+  defp manifest_reason(stage, _manifest_path, {:encoding, cause}), do: {:manifest_encoding_failed, stage, cause}
+
+  defp manifest_reason(stage, manifest_path, {:write, cause}), do: {:manifest_write_failed, stage, manifest_path, cause}
+
+  defp manifest_reason(stage, manifest_path, cause), do: {:manifest_write_failed, stage, manifest_path, cause}
 
   defp system_cmd(executable, argv, options) do
     {output, exit_status} = System.cmd(executable, argv, options)

@@ -31,6 +31,7 @@ if [ -z "$run_directory" ]; then
 fi
 
 script_directory=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+cp "$run_directory/victoria-run.json" "$run_directory/running-manifest-snapshot.json"
 pwd > "$run_directory/working-directory.txt"
 printf '%s\n' "$@" > "$run_directory/argv.txt"
 printf 'standard output\n'
