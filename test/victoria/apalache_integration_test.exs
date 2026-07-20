@@ -1,14 +1,14 @@
 defmodule Victoria.ApalacheIntegrationTest do
   use ExUnit.Case, async: false
 
+  import Victoria.ExUnit
+
   alias Victoria.Apalache
-  alias Victoria.Apalache.Manifest
   alias Victoria.Apalache.Plan
   alias Victoria.Apalache.Result
   alias Victoria.Spec
   alias Victoria.Test.CounterModel
   alias Victoria.Test.TrackingCounterModel
-  alias Victoria.Workflow
 
   @moduletag :apalache
 
@@ -96,36 +96,35 @@ defmodule Victoria.ApalacheIntegrationTest do
     end
   end
 
-  test "runs the complete generated conformance workflow", context do
+  test "asserts conformance through a real generated workflow", context do
     {source, config} = copy_spec(context.root, "Counter", @counter_source, @counter_config)
     {:ok, spec} = Spec.new(source: source, config: config)
     artifact_root = Path.join(context.root, "workflow-runs")
 
-    assert {:ok,
-            %Workflow.Result{
-              model: TrackingCounterModel,
-              apalache:
-                %Result{
-                  version: %Version{major: 0, minor: 58, patch: 3},
-                  trace_paths: [_trace_path | _trace_paths] = trace_paths,
-                  traces: [_trace | _traces] = traces
-                } = apalache,
-              verifications: [%Workflow.Verification{} | _verifications] = verifications
-            }} =
-             Workflow.run(TrackingCounterModel, spec,
+    assert :ok =
+             assert_conform(TrackingCounterModel, spec,
                plan: [mode: :simulate, length: 3, max_run: 1],
                artifacts: [root: artifact_root]
              )
 
-    assert Path.dirname(apalache.plan.run_directory) == Path.expand(artifact_root)
-    assert apalache.plan |> Manifest.path() |> File.regular?()
-    assert length(verifications) == length(traces)
-    assert Enum.map(verifications, & &1.trace_path) == trace_paths
-    assert Enum.map(verifications, & &1.trace_index) == Enum.to_list(0..(length(traces) - 1))
+    assert [run_name] = File.ls!(artifact_root)
+    run_directory = Path.join(artifact_root, run_name)
+    manifest = read_manifest(run_directory)
+    trace_paths = manifest["artifacts"]["trace_paths"]
+
+    assert run_directory |> Path.join("victoria-run.json") |> File.regular?()
+    assert manifest["status"] == "completed"
+    assert manifest["outcome"] == "materialized"
+    assert manifest["execution"]["apalache_version"] == "0.58.3"
+    assert [_trace_path | _trace_paths] = trace_paths
+
+    for trace_path <- trace_paths do
+      assert run_directory |> Path.join(trace_path) |> File.regular?()
+    end
 
     messages = self() |> Process.info(:messages) |> elem(1)
-    assert Enum.count(messages, &(&1 == :init)) == length(traces)
-    assert Enum.count(messages, &(&1 == :cleanup)) == length(traces)
+    assert Enum.count(messages, &(&1 == :init)) == length(trace_paths)
+    assert Enum.count(messages, &(&1 == :cleanup)) == length(trace_paths)
   end
 
   defp copy_spec(root, name, source, config) do

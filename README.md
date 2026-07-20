@@ -39,8 +39,53 @@ Apalache result. A successful `%Victoria.Workflow.Result{}` means every material
 
 The workflow is synchronous and has no timeout. Callers that need direct control of the run directory or any
 lower-level step can continue to use the explicit `Spec` → `RunDirectory` → `Plan` → `Apalache.run` →
-`Victoria.verify` APIs below. `Victoria.ExUnit.assert_conform/2` remains a fixed-trace assertion and does not
-run this generated workflow.
+`Victoria.verify` APIs below. ExUnit callers can use `Victoria.ExUnit.assert_conform/3` to run the complete
+workflow while retaining `assert_conform/2` for one existing fixed trace.
+
+## ExUnit conformance assertions
+
+Import the plain assertion functions to verify either a fixed trace or generated traces:
+
+```elixir
+import Victoria.ExUnit
+
+# Verify one existing fixed trace.
+:ok =
+  assert_conform(
+    Counter.Model,
+    trace: "test/traces/counter.itf.json"
+  )
+
+# Generate traces and verify all of them.
+{:ok, spec} =
+  Victoria.Spec.new(
+    source: "test/specs/Counter.tla",
+    config: "test/specs/Counter.cfg"
+  )
+
+:ok =
+  assert_conform(
+    Counter.Model,
+    spec,
+    plan: [
+      mode: :simulate,
+      length: 10,
+      max_run: 5
+    ]
+  )
+```
+
+The generated form requires a validated `%Victoria.Spec{}` and the supported Apalache v0.58.3 executable.
+It invokes Apalache synchronously, allocates a run directory automatically, and retains all Apalache
+artifacts and `victoria-run.json`. Generated ITF traces are validated and then verified in deterministic
+materialization order. Every trace, including duplicates, receives a fresh implementation lifecycle, and
+verification stops after the first failure.
+
+Both assertions return only `:ok` on success. Controlled Victoria failures become
+`ExUnit.AssertionError` with their authoritative messages; invalid models, Specs, and options remain
+`ArgumentError`. Call `Victoria.Workflow.run/3` directly when the workflow result, reports, trace paths, or
+other artifact details are needed programmatically. Generated assertions may block indefinitely because
+Victoria currently provides no workflow timeout; tag real-Apalache tests separately when appropriate.
 
 ## Apalache planning and execution
 
@@ -141,7 +186,7 @@ It returns `{:ok, %Victoria.Runner.Report{}}` when the trace conforms, an
 `{:error, %Victoria.Runner.Failure{}}` when replay fails. Loading and verification errors retain their
 existing `Exception.message/1` renderers.
 
-In ExUnit tests, import the plain assertion function. It returns `:ok` on success and converts either
+The fixed-trace form of the plain ExUnit assertion returns `:ok` on success and converts either controlled
 error into an `ExUnit.AssertionError` using the same rendering:
 
 ```elixir
@@ -183,8 +228,8 @@ their TLC-style Apalache configs belong in `test/specs`. Generated checker work 
 
 ## Deferred work
 
-The current boundary does not include `Model.spec/0`, a `Victoria.generate/…` convenience, ExUnit workflow
-assertions, workflow manifests, configurable workflow retries, continue-after-failure verification,
+The current boundary does not include `Model.spec/0`, a `Victoria.generate/…` convenience, workflow
+manifests, configurable workflow retries, continue-after-failure verification,
 parallelism, deduplication, timeouts, cancellation, Docker support, environment overrides, artifact cleanup,
 campaigns, lasso execution, rich tagged values beyond `#bigint`, shrinking, random testing, or executable
 reference models.

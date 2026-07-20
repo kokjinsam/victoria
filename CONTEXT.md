@@ -41,3 +41,8 @@
 - **Workflow success** — an Apalache run materialized one or more traces and every materialized trace
   conformed. The workflow does not deduplicate traces, every trace starts a fresh implementation lifecycle,
   lower-level APIs remain independently usable, and no workflow-level durable manifest exists yet.
+- **Generated conformance assertion** — `Victoria.ExUnit.assert_conform/3` runs a complete generated
+  conformance workflow from a validated Spec and raises `ExUnit.AssertionError` when controlled Apalache,
+  trace-materialization, or implementation-verification failures occur. `assert_conform/2` remains the
+  fixed-trace form. Both plain functions return only `:ok` on success and preserve programmer misuse as
+  `ArgumentError`; callers needing `%Victoria.Workflow.Result{}` use `Victoria.Workflow.run/3` directly.
