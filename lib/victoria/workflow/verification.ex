@@ -1,0 +1,14 @@
+defmodule Victoria.Workflow.Verification do
+  @moduledoc "Associates one generated trace with its successful verification report."
+
+  alias Victoria.Runner
+
+  @enforce_keys [:trace_index, :trace_path, :report]
+  defstruct [:trace_index, :trace_path, :report]
+
+  @type t :: %__MODULE__{
+          trace_index: non_neg_integer(),
+          trace_path: Path.t(),
+          report: Runner.Report.t()
+        }
+end

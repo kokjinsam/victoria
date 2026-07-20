@@ -2,7 +2,45 @@
 
 Model-based testing with the Apalache TLA+ model checker.
 
-Victoria replays one fixed ITF trace against one model, sequentially, and stops at the first failure.
+Victoria materializes formal traces with Apalache and verifies them against an implementation model.
+
+## Conformance workflow
+
+The high-level workflow allocates an Apalache run and verifies every materialized trace:
+
+```elixir
+{:ok, spec} =
+  Victoria.Spec.new(
+    source: "test/specs/Counter.tla",
+    config: "test/specs/Counter.cfg"
+  )
+
+{:ok, result} =
+  Victoria.Workflow.run(
+    Counter.Model,
+    spec,
+    plan: [
+      mode: :simulate,
+      length: 10,
+      max_run: 5
+    ]
+  )
+```
+
+The run directory is allocated automatically from one UTC timestamp and a fresh random suffix. Victoria
+retries only exact directory-name collisions, up to eight total attempts. The existing Apalache artifacts
+and `victoria-run.json` manifest are retained on success or failure; the workflow does not write a second
+workflow-level manifest.
+
+Generated traces are verified sequentially in materialization order without deduplication. Every trace is
+passed independently to `Victoria.verify/2`, so each receives a fresh implementation lifecycle. Verification
+stops on the first failure, and the workflow error retains prior successful reports together with the complete
+Apalache result. A successful `%Victoria.Workflow.Result{}` means every materialized trace conformed.
+
+The workflow is synchronous and has no timeout. Callers that need direct control of the run directory or any
+lower-level step can continue to use the explicit `Spec` → `RunDirectory` → `Plan` → `Apalache.run` →
+`Victoria.verify` APIs below. `Victoria.ExUnit.assert_conform/2` remains a fixed-trace assertion and does not
+run this generated workflow.
 
 ## Apalache planning and execution
 
@@ -145,10 +183,11 @@ their TLC-style Apalache configs belong in `test/specs`. Generated checker work 
 
 ## Deferred work
 
-The current boundary does not include `Model.spec/0`, a `Victoria.generate/…` convenience, automatic
-implementation verification, timeouts, cancellation, Docker support, environment overrides, artifact
-cleanup, retries, campaigns, lasso execution, rich tagged values beyond `#bigint`, shrinking, random
-testing, advanced generated-trace testing, or executable reference models.
+The current boundary does not include `Model.spec/0`, a `Victoria.generate/…` convenience, ExUnit workflow
+assertions, workflow manifests, configurable workflow retries, continue-after-failure verification,
+parallelism, deduplication, timeouts, cancellation, Docker support, environment overrides, artifact cleanup,
+campaigns, lasso execution, rich tagged values beyond `#bigint`, shrinking, random testing, or executable
+reference models.
 
 ## Prior Art
 

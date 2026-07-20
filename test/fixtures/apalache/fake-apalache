@@ -50,6 +50,11 @@ case "$name" in
     cp "$script_directory/valid.itf.json" "$run_directory/z.itf.json"
     cp "$script_directory/valid.itf.json" "$run_directory/a.itf.json"
     ;;
+  *workflow-stop-first*)
+    cp "$script_directory/valid.itf.json" "$run_directory/a-valid.itf.json"
+    cp "$script_directory/step-mismatch.itf.json" "$run_directory/b-mismatch.itf.json"
+    cp "$script_directory/valid.itf.json" "$run_directory/c-unreached.itf.json"
+    ;;
   *lasso*) cp "$script_directory/loop.itf.json" "$run_directory/loop.itf.json" ;;
   *discovery-types*)
     cp "$script_directory/valid.itf.json" "$run_directory/regular.itf.json"

@@ -2,10 +2,13 @@ defmodule Victoria.ApalacheIntegrationTest do
   use ExUnit.Case, async: false
 
   alias Victoria.Apalache
+  alias Victoria.Apalache.Manifest
   alias Victoria.Apalache.Plan
   alias Victoria.Apalache.Result
   alias Victoria.Spec
   alias Victoria.Test.CounterModel
+  alias Victoria.Test.TrackingCounterModel
+  alias Victoria.Workflow
 
   @moduletag :apalache
 
@@ -91,6 +94,38 @@ defmodule Victoria.ApalacheIntegrationTest do
     for trace <- traces do
       assert {:ok, _report} = Victoria.verify(CounterModel, trace: trace)
     end
+  end
+
+  test "runs the complete generated conformance workflow", context do
+    {source, config} = copy_spec(context.root, "Counter", @counter_source, @counter_config)
+    {:ok, spec} = Spec.new(source: source, config: config)
+    artifact_root = Path.join(context.root, "workflow-runs")
+
+    assert {:ok,
+            %Workflow.Result{
+              model: TrackingCounterModel,
+              apalache:
+                %Result{
+                  version: %Version{major: 0, minor: 58, patch: 3},
+                  trace_paths: [_trace_path | _trace_paths] = trace_paths,
+                  traces: [_trace | _traces] = traces
+                } = apalache,
+              verifications: [%Workflow.Verification{} | _verifications] = verifications
+            }} =
+             Workflow.run(TrackingCounterModel, spec,
+               plan: [mode: :simulate, length: 3, max_run: 1],
+               artifacts: [root: artifact_root]
+             )
+
+    assert Path.dirname(apalache.plan.run_directory) == Path.expand(artifact_root)
+    assert apalache.plan |> Manifest.path() |> File.regular?()
+    assert length(verifications) == length(traces)
+    assert Enum.map(verifications, & &1.trace_path) == trace_paths
+    assert Enum.map(verifications, & &1.trace_index) == Enum.to_list(0..(length(traces) - 1))
+
+    messages = self() |> Process.info(:messages) |> elem(1)
+    assert Enum.count(messages, &(&1 == :init)) == length(traces)
+    assert Enum.count(messages, &(&1 == :cleanup)) == length(traces)
   end
 
   defp copy_spec(root, name, source, config) do
