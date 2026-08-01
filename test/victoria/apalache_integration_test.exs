@@ -58,7 +58,7 @@ defmodule Victoria.ApalacheIntegrationTest do
     assert manifest["status"] == "completed"
     assert manifest["outcome"] == "materialized"
     assert manifest["execution"]["exit_status"] == 0
-    assert manifest["artifacts"]["trace_paths"] == Enum.map(trace_paths, &Path.basename/1)
+    assert manifest["artifacts"]["itf_paths"] == Enum.map(trace_paths, &Path.basename/1)
 
     for trace <- traces do
       assert {:ok, _report} = Victoria.verify(CounterModel, trace: trace)
@@ -110,9 +110,10 @@ defmodule Victoria.ApalacheIntegrationTest do
     assert [run_name] = File.ls!(artifact_root)
     run_directory = Path.join(artifact_root, run_name)
     manifest = read_manifest(run_directory)
-    trace_paths = manifest["artifacts"]["trace_paths"]
+    trace_paths = manifest["artifacts"]["itf_paths"]
 
-    assert run_directory |> Path.join("victoria-run.json") |> File.regular?()
+    assert run_directory |> Path.join("apalachex-run.json") |> File.regular?()
+    refute run_directory |> Path.join("victoria-run.json") |> File.exists?()
     assert manifest["status"] == "completed"
     assert manifest["outcome"] == "materialized"
     assert manifest["execution"]["apalache_version"] == "0.58.3"
@@ -139,7 +140,7 @@ defmodule Victoria.ApalacheIntegrationTest do
 
   defp read_manifest(run_directory) do
     run_directory
-    |> Path.join("victoria-run.json")
+    |> Path.join("apalachex-run.json")
     |> File.read!()
     |> JSON.decode!()
   end

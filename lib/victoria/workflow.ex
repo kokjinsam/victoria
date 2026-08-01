@@ -118,7 +118,7 @@ defmodule Victoria.Workflow do
       {:ok, apalache_result} ->
         verify_traces(model, spec, apalache_result)
 
-      {:error, %Apalache.Error{} = error} ->
+      {:error, %Apalachex.Error{} = error} ->
         handle_apalache_error(
           error,
           model,
@@ -129,11 +129,17 @@ defmodule Victoria.Workflow do
           generated_at,
           attempts_left
         )
+
+      {:error, %Apalachex.Spec.Error{} = error} ->
+        workflow_error(:apalache, error, model, spec)
+
+      {:error, %Apalache.Error{} = error} ->
+        workflow_error(:apalache, error, model, spec)
     end
   end
 
   defp handle_apalache_error(
-         %Apalache.Error{phase: :run_directory, reason: :run_directory_already_exists} = error,
+         %Apalachex.Error{phase: :run_directory, reason: :run_directory_already_exists} = error,
          model,
          spec,
          plan_options,
@@ -162,7 +168,7 @@ defmodule Victoria.Workflow do
     end
   end
 
-  defp handle_apalache_error(%Apalache.Error{} = error, model, spec, _plan, _apalache, _artifacts, _at, _left) do
+  defp handle_apalache_error(%Apalachex.Error{} = error, model, spec, _plan, _apalache, _artifacts, _at, _left) do
     phase = if error.phase == :run_directory, do: :run_directory, else: :apalache
     workflow_error(phase, error, model, spec)
   end

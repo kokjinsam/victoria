@@ -1,6 +1,6 @@
 defmodule Victoria.Apalache.Error do
   @moduledoc """
-  A structured Apalache execution or trace-materialization failure.
+  A structured Victoria ITF trace-loading failure.
 
   Errors are constructed by Victoria and should be treated as read-only. Raw
   output is retained in the struct; `Exception.message/1` renders only a
@@ -22,7 +22,7 @@ defmodule Victoria.Apalache.Error do
     manifest_failure: nil
   ]
 
-  @typedoc "The Apalache boundary phase that failed."
+  @typedoc "The retained compatibility phase that failed. New Victoria errors use `:trace_loading`."
   @type phase ::
           :executable_discovery
           | :version_probe

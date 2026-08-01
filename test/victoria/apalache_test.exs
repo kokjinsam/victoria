@@ -3,17 +3,12 @@ defmodule Victoria.ApalacheTest do
 
   alias Victoria.Apalache
   alias Victoria.Apalache.Error
-  alias Victoria.Apalache.Manifest
   alias Victoria.Apalache.Plan
   alias Victoria.Apalache.Result
   alias Victoria.ITF
   alias Victoria.Spec
 
   @fixture_executable Path.expand("../fixtures/apalache/fake-apalache", __DIR__)
-  @valid_trace Path.expand("../fixtures/counter.itf.json", __DIR__)
-  @malformed_trace Path.expand("../fixtures/malformed_json.itf.json", __DIR__)
-  @unsupported_trace Path.expand("../fixtures/unsupported_set.itf.json", __DIR__)
-  @loop_trace Path.expand("../fixtures/loop.itf.json", __DIR__)
   @source Path.expand("../specs/Counter.tla", __DIR__)
   @config Path.expand("../specs/Counter.cfg", __DIR__)
 
@@ -24,539 +19,165 @@ defmodule Victoria.ApalacheTest do
     %{root: root}
   end
 
-  test "raises for strict API misuse", %{root: root} do
-    plan = root |> Path.join("run") |> plan()
-    apalache = Module.safe_concat(["Victoria", "Apalache"])
+  test "raises for compatibility-facade API misuse", %{root: root} do
+    plan = plan(Path.join(root, "run"))
 
-    invalid_calls = [
-      fn -> Apalache.run(%{}, []) end,
-      fn -> apalache.run(plan, %{executable: "tool"}) end,
-      fn -> Apalache.run(plan, executable: "a", executable: "b") end,
-      fn -> Apalache.run(plan, unknown: true) end,
-      fn -> Apalache.run(plan, executable: "") end,
-      fn -> Apalache.run(plan, executable: " \t") end,
-      fn -> Apalache.run(plan, executable: 123) end
-    ]
-
-    for call <- invalid_calls do
+    for call <- [
+          fn -> Apalache.run(%{}, []) end,
+          fn -> Apalache.run(plan, %{executable: "tool"}) end,
+          fn -> Apalache.run(plan, executable: "a", executable: "b") end,
+          fn -> Apalache.run(plan, unknown: true) end,
+          fn -> Apalache.run(plan, executable: "") end
+        ] do
       assert_raise ArgumentError, call
     end
   end
 
-  test "resolves the omitted executable and bare names through PATH and restores PATH", %{root: root} do
-    executable = install_fake(root, "apalache-mc")
-    original_path = System.get_env("PATH")
+  test "preserves Victoria results for successful simulate and check runs", %{root: root} do
+    executable = install_fake(root, "valid-nonzero")
 
-    try do
-      System.put_env("PATH", Path.dirname(executable) <> ":" <> (original_path || ""))
+    for {mode, options} <- [
+          simulate: [mode: :simulate, length: 3, max_run: 2],
+          check: [mode: :check, length: 3]
+        ] do
+      run_directory = Path.join(root, Atom.to_string(mode))
+      original_plan = plan(run_directory, options)
 
-      assert {:ok, %Result{executable: ^executable}} =
-               root |> Path.join("default") |> plan() |> Apalache.run()
+      assert {:ok,
+              %Result{
+                plan: ^original_plan,
+                executable: ^executable,
+                version: %Version{major: 0, minor: 58, patch: 3},
+                exit_status: 12,
+                output: output,
+                trace_paths: [trace_path],
+                traces: [trace]
+              }} = Apalache.run(original_plan, executable: executable)
 
-      assert {:ok, %Result{executable: ^executable}} =
-               root |> Path.join("bare") |> plan() |> Apalache.run(executable: "apalache-mc")
-    after
-      restore_env("PATH", original_path)
+      assert output == "standard output\nstandard error\n"
+      assert trace.source == trace_path
+      assert Path.dirname(trace_path) == run_directory
+
+      assert %{
+               "outcome" => "materialized",
+               "plan" => %{"mode" => manifest_mode},
+               "execution" => %{"exit_status" => 12},
+               "artifacts" => %{"itf_paths" => ["trace.itf.json"]}
+             } = read_manifest(run_directory)
+
+      assert manifest_mode == Atom.to_string(mode)
+      refute run_directory |> Path.join("victoria-run.json") |> File.exists?()
     end
   end
 
-  test "reports an omitted executable missing from PATH and restores PATH", %{root: root} do
-    original_path = System.get_env("PATH")
-
-    try do
-      System.put_env("PATH", "")
-
-      assert {:error, %Error{phase: :executable_discovery, reason: :executable_not_found}} =
-               root |> Path.join("run") |> plan() |> Apalache.run()
-    after
-      restore_env("PATH", original_path)
-    end
-  end
-
-  test "expands explicit relative executables against the call-time process cwd", %{root: root} do
-    _executable = install_fake(root, "relative-apalache")
-    original_cwd = File.cwd!()
-
-    try do
-      File.cd!(root)
-      expanded_executable = Path.expand("./relative-apalache")
-
-      assert {:ok, %Result{executable: ^expanded_executable}} =
-               root |> Path.join("run") |> plan() |> Apalache.run(executable: "./relative-apalache")
-    after
-      File.cd!(original_cwd)
-    end
-  end
-
-  test "supports absolute executable paths containing spaces", %{root: root} do
-    directory = Path.join(root, "tools with spaces")
-    executable = install_fake(directory, "fake apalache")
-
-    assert {:ok, %Result{executable: ^executable}} =
-             root |> Path.join("run") |> plan() |> Apalache.run(executable: executable)
-  end
-
-  test "rejects missing explicit paths and directories", %{root: root} do
-    run = root |> Path.join("run") |> plan()
-    missing = Path.join(root, "missing/apalache")
-
-    assert {:error, %Error{phase: :executable_discovery, reason: :executable_not_found}} =
-             Apalache.run(run, executable: missing)
-
-    assert {:error, %Error{phase: :executable_discovery, reason: {:not_a_regular_file, ^root}}} =
-             Apalache.run(run, executable: root)
-  end
-
-  test "accepts only the supported version identity forms", %{root: root} do
-    supported = root |> Path.join("supported") |> install_fake("supported")
-    prefixed = root |> Path.join("prefixed") |> install_fake("prefixed")
-
-    assert {:ok, %Result{version: %Version{major: 0, minor: 58, patch: 3}}} =
-             root |> Path.join("supported-run") |> plan() |> Apalache.run(executable: supported)
-
-    assert {:ok, %Result{version: %Version{major: 0, minor: 58, patch: 3}}} =
-             root |> Path.join("prefixed-run") |> plan() |> Apalache.run(executable: prefixed)
-  end
-
-  test "rejects unsupported, banner, prerelease, and failed version probes before reservation", %{root: root} do
-    cases = [
-      {"unsupported", :version_compatibility, :unsupported_version},
-      {"banner", :version_probe, :unparseable_version},
-      {"prerelease", :version_probe, :unparseable_version},
-      {"build-version", :version_probe, :unparseable_version},
-      {"empty-version", :version_probe, :unparseable_version},
-      {"version-fail", :version_probe, :version_process_failed}
-    ]
-
-    for {name, phase, reason_tag} <- cases do
-      executable = root |> Path.join(name) |> install_fake(name)
-      run_directory = Path.join(root, "#{name}-run")
-
-      assert {:error, %Error{phase: ^phase, reason: reason}} =
-               run_directory |> plan() |> Apalache.run(executable: executable)
-
-      assert reason_tag(reason) == reason_tag
-      refute File.exists?(run_directory)
-    end
-  end
-
-  test "rejects invalid version bytes before reservation and preserves them exactly", %{root: root} do
-    executable = root |> Path.join("invalid-version") |> install_fake("invalid-version")
-    run_directory = Path.join(root, "run")
-    output = <<255, "version\n">>
-
-    assert {:error,
-            %Error{
-              phase: :version_probe,
-              reason: {:unparseable_version, ^output},
-              output: ^output
-            }} = run_directory |> plan() |> Apalache.run(executable: executable)
-
-    refute File.exists?(run_directory)
-  end
-
-  test "structures a version-probe process-start failure before reservation", %{root: root} do
-    executable = root |> Path.join("tool") |> install_fake("supported")
-    File.chmod!(executable, 0o644)
-    run_directory = Path.join(root, "run")
-
-    assert {:error, %Error{phase: :version_probe, reason: {:version_process_start_failed, _reason}}} =
-             run_directory |> plan() |> Apalache.run(executable: executable)
-
-    refute File.exists?(run_directory)
-  end
-
-  test "reserves the exact run directory exclusively and creates its parent", %{root: root} do
-    executable = root |> Path.join("tool") |> install_fake("supported")
-    run_directory = Path.join([root, "new", "parent", "exact"])
-
-    assert {:ok, %Result{plan: %Plan{run_directory: ^run_directory}}} =
-             run_directory |> plan() |> Apalache.run(executable: executable)
-
-    assert File.dir?(run_directory)
-
-    assert {:error, %Error{phase: :run_directory, reason: :run_directory_already_exists}} =
-             run_directory |> plan() |> Apalache.run(executable: executable)
-  end
-
-  test "does not reuse an existing file or delete existing directory content", %{root: root} do
-    executable = root |> Path.join("tool") |> install_fake("supported")
-    file_path = Path.join(root, "existing-file")
-    File.write!(file_path, "keep")
-
-    assert {:error, %Error{phase: :run_directory, reason: :run_directory_already_exists}} =
-             file_path |> plan() |> Apalache.run(executable: executable)
-
-    directory = Path.join(root, "existing-directory")
-    File.mkdir!(directory)
-    sentinel = Path.join(directory, "keep.txt")
-    manifest = Path.join(directory, "victoria-run.json")
-    manifest_bytes = ~s({"status":"running"}\n)
-    File.write!(sentinel, "keep")
-    File.write!(manifest, manifest_bytes)
-
-    assert {:error, %Error{phase: :run_directory, reason: :run_directory_already_exists}} =
-             directory |> plan() |> Apalache.run(executable: executable)
-
-    assert File.read!(sentinel) == "keep"
-    assert File.read!(manifest) == manifest_bytes
-    refute directory |> Path.join("working-directory.txt") |> File.exists?()
-  end
-
-  test "structures parent creation failures", %{root: root} do
-    executable = root |> Path.join("tool") |> install_fake("supported")
-    blocked_parent = Path.join(root, "blocked")
-    File.write!(blocked_parent, "file")
-
-    assert {:error, %Error{phase: :run_directory, reason: {:parent_creation_failed, _reason}}} =
-             blocked_parent |> Path.join("run") |> plan() |> Apalache.run(executable: executable)
-  end
-
-  test "preserves exact argv, working directory, merged output, and shell-free arguments", %{root: root} do
-    executable = root |> Path.join("tool") |> install_fake("supported")
-    working_directory = Path.join(root, "formal models")
-    File.mkdir_p!(working_directory)
-    source = Path.join(working_directory, "$(touch forbidden).tla")
-    File.write!(source, "fixture")
-    forbidden = Path.join(working_directory, "forbidden")
-    run_directory = Path.join(root, "run")
-
-    custom_plan =
-      Plan.new(%Spec{source: source, config: nil},
-        mode: :simulate,
-        length: 2,
-        max_run: 1,
-        run_directory: run_directory
-      )
-
-    assert {:ok, %Result{output: output, exit_status: 0}} =
-             Apalache.run(custom_plan, executable: executable)
-
-    assert output =~ "standard output"
-    assert output =~ "standard error"
-
-    actual_working_directory =
-      run_directory |> Path.join("working-directory.txt") |> File.read!() |> String.trim()
-
-    assert canonical_directory(actual_working_directory) == canonical_directory(working_directory)
-
-    assert run_directory |> Path.join("argv.txt") |> File.read!() |> String.split("\n", trim: true) == custom_plan.argv
-    refute File.exists?(forbidden)
-  end
-
-  test "returns success for zero and nonzero exits when every discovered trace validates", %{root: root} do
-    zero = root |> Path.join("zero") |> install_fake("valid")
-    nonzero = root |> Path.join("nonzero") |> install_fake("valid-nonzero")
-
-    assert {:ok, %Result{exit_status: 0, traces: [_zero_trace]}} =
-             root |> Path.join("zero-run") |> plan() |> Apalache.run(executable: zero)
-
-    assert {:ok, %Result{exit_status: 12, traces: [_nonzero_trace]}} =
-             root |> Path.join("nonzero-run") |> plan() |> Apalache.run(executable: nonzero)
-
-    assert read_manifest(Path.join(root, "zero-run"))["outcome"] == "materialized"
-
-    nonzero_manifest = read_manifest(Path.join(root, "nonzero-run"))
-    assert nonzero_manifest["outcome"] == "materialized"
-    assert nonzero_manifest["execution"]["exit_status"] == 12
-  end
-
-  test "commits a complete running manifest before invoking the executable", %{root: root} do
-    executable = root |> Path.join("tool") |> install_fake("valid")
-    run_directory = Path.join(root, "run")
-    plan = plan(run_directory)
-
-    assert {:ok, %Result{trace_paths: trace_paths}} = Apalache.run(plan, executable: executable)
-
-    running =
-      run_directory
-      |> Path.join("running-manifest-snapshot.json")
-      |> File.read!()
-      |> JSON.decode!()
-
-    assert running["status"] == "running"
-    assert running["outcome"] == nil
-    assert running["completed_at"] == nil
-    assert running["plan"]["argv"] == plan.argv
-
-    completed = read_manifest(run_directory)
-    assert completed["status"] == "completed"
-    assert completed["outcome"] == "materialized"
-    assert completed["artifacts"]["trace_paths"] == Enum.map(trace_paths, &Path.basename/1)
-    assert plan |> Manifest.path() |> File.read!() |> String.ends_with?("\n")
-
-    assert {:ok, started_at, 0} = DateTime.from_iso8601(completed["started_at"])
-    assert {:ok, completed_at, 0} = DateTime.from_iso8601(completed["completed_at"])
-    assert DateTime.compare(completed_at, started_at) in [:eq, :gt]
-  end
-
-  test "classifies no-trace outcomes and retains their run directories", %{root: root} do
-    zero = root |> Path.join("zero") |> install_fake("no-trace")
-    nonzero = root |> Path.join("nonzero") |> install_fake("no-trace-nonzero")
-    zero_run = Path.join(root, "zero-run")
-    nonzero_run = Path.join(root, "nonzero-run")
-
-    assert {:error, %Error{phase: :trace_discovery, reason: :no_traces, exit_status: 0}} =
-             zero_run |> plan() |> Apalache.run(executable: zero)
-
-    assert {:error, %Error{phase: :execution, reason: {:process_failed_without_trace, 9}, exit_status: 9}} =
-             nonzero_run |> plan() |> Apalache.run(executable: nonzero)
-
-    assert File.dir?(zero_run)
-    assert File.dir?(nonzero_run)
-
-    assert %{
-             "status" => "completed",
-             "outcome" => "failed",
-             "failure" => %{"phase" => "trace_discovery", "reason" => "no_traces"}
-           } = read_manifest(zero_run)
-
-    assert %{
-             "status" => "completed",
-             "outcome" => "failed",
-             "failure" => %{"phase" => "execution", "reason" => "process_failed_without_trace"}
-           } = read_manifest(nonzero_run)
-  end
-
-  test "structures process-start failures and retains the reserved run directory", %{root: root} do
-    executable = root |> Path.join("tool") |> install_fake("start-fail")
-    run_directory = Path.join(root, "run")
-
-    assert {:error, %Error{phase: :execution, reason: {:process_start_failed, _reason}}} =
-             run_directory |> plan() |> Apalache.run(executable: executable)
-
-    assert File.dir?(run_directory)
-
-    manifest = read_manifest(run_directory)
-    assert manifest["status"] == "completed"
-    assert manifest["outcome"] == "failed"
-    assert manifest["failure"]["phase"] == "execution"
-    assert manifest["failure"]["reason"] == "process_start_failed"
-  end
-
-  test "prevents execution when the initial manifest cannot be committed", %{root: root} do
-    executable = root |> Path.join("tool") |> install_fake("valid")
-    run_directory = Path.join(root, "run")
-    plan = plan(run_directory)
-
-    result =
-      Manifest.with_writer(
-        fn _path, _document -> {:error, {:encoding, :fixture_encoding_failure}} end,
-        fn -> Apalache.run(plan, executable: executable) end
-      )
-
-    assert {:error,
-            %Error{
-              phase: :manifest,
-              reason: {:manifest_encoding_failed, :initial, :fixture_encoding_failure}
-            }} = result
-
-    assert File.dir?(run_directory)
-    refute run_directory |> Path.join("working-directory.txt") |> File.exists?()
-    refute run_directory |> Path.join("running-manifest-snapshot.json") |> File.exists?()
-  end
-
-  test "turns a final manifest failure after success into the primary error with retained context", %{root: root} do
-    executable = root |> Path.join("tool") |> install_fake("valid-nonzero")
-    run_directory = Path.join(root, "run")
-    plan = plan(run_directory)
-
-    writer = fn path, document ->
-      if document["status"] == "running" do
-        Manifest.write_atomic(path, document)
-      else
-        {:error, {:write, :fixture_final_failure}}
-      end
-    end
-
-    assert {:error,
-            %Error{
-              phase: :manifest,
-              reason: {:manifest_write_failed, :final, manifest_path, :fixture_final_failure},
-              executable: ^executable,
-              version: %Version{major: 0, minor: 58, patch: 3},
-              exit_status: 12,
-              output: output,
-              trace_paths: [trace_path]
-            }} = Manifest.with_writer(writer, fn -> Apalache.run(plan, executable: executable) end)
-
-    assert manifest_path == Manifest.path(plan)
-    assert output == "standard output\nstandard error\n"
-    assert File.regular?(trace_path)
-    assert read_manifest(run_directory)["status"] == "running"
-  end
-
-  test "keeps an operational failure primary when final manifest persistence also fails", %{root: root} do
-    executable = root |> Path.join("tool") |> install_fake("no-trace")
-    run_directory = Path.join(root, "run")
-    plan = plan(run_directory)
-
-    writer = fn path, document ->
-      if document["status"] == "running" do
-        Manifest.write_atomic(path, document)
-      else
-        {:error, {:write, :fixture_final_failure}}
-      end
-    end
-
-    assert {:error,
-            %Error{
-              phase: :trace_discovery,
-              reason: :no_traces,
-              manifest_failure: {:manifest_write_failed, :final, manifest_path, :fixture_final_failure}
-            } = error} = Manifest.with_writer(writer, fn -> Apalache.run(plan, executable: executable) end)
-
-    assert manifest_path == Manifest.path(plan)
-    assert Exception.message(error) =~ "secondary manifest failure"
-    assert read_manifest(run_directory)["status"] == "running"
-  end
-
-  test "discovers only actual top-level regular ITF files and sorts paths lexically", %{root: root} do
-    multiple = root |> Path.join("multiple") |> install_fake("multiple")
-    run_directory = Path.join(root, "multiple-run")
+  test "loads Apalachex ITF paths in their returned order", %{root: root} do
+    executable = install_fake(root, "multiple")
 
     assert {:ok, %Result{trace_paths: paths, traces: traces}} =
-             run_directory |> plan() |> Apalache.run(executable: multiple)
+             root
+             |> Path.join("run")
+             |> plan()
+             |> Apalache.run(executable: executable)
 
-    assert paths == Enum.sort(paths)
     assert Enum.map(paths, &Path.basename/1) == ["a.itf.json", "z.itf.json"]
     assert Enum.map(traces, & &1.source) == paths
-    assert read_manifest(run_directory)["artifacts"]["trace_paths"] == ["a.itf.json", "z.itf.json"]
 
-    types = root |> Path.join("types") |> install_fake("discovery-types")
-
-    assert {:ok, %Result{trace_paths: [regular]}} =
-             root |> Path.join("types-run") |> plan() |> Apalache.run(executable: types)
-
-    assert Path.basename(regular) == "regular.itf.json"
-    assert read_manifest(Path.join(root, "types-run"))["artifacts"]["trace_paths"] == ["regular.itf.json"]
+    assert root |> Path.join("run") |> read_manifest() |> get_in(["artifacts", "itf_paths"]) ==
+             ["a.itf.json", "z.itf.json"]
   end
 
-  test "loads traces all-or-nothing and preserves the nested ITF error and every path", %{root: root} do
-    executable = root |> Path.join("tool") |> install_fake("mixed")
+  test "returns Victoria's trace-loading error while retaining materialized execution evidence", %{root: root} do
+    executable = install_fake(root, "mixed")
     run_directory = Path.join(root, "run")
+    original_plan = plan(run_directory)
 
     assert {:error,
             %Error{
+              plan: ^original_plan,
               phase: :trace_loading,
-              reason: {:invalid_trace, failing_path, %ITF.Error{} = nested},
-              trace_paths: paths,
-              exit_status: 0
-            }} = run_directory |> plan() |> Apalache.run(executable: executable)
+              reason: {:invalid_trace, invalid_path, %ITF.Error{source: invalid_path}},
+              executable: ^executable,
+              version: %Version{major: 0, minor: 58, patch: 3},
+              exit_status: 0,
+              output: "standard output\nstandard error\n",
+              trace_paths: paths
+            }} = Apalache.run(original_plan, executable: executable)
 
-    assert Path.basename(failing_path) == "b-invalid.itf.json"
-    assert nested.source == failing_path
     assert Enum.map(paths, &Path.basename/1) == ["a-valid.itf.json", "b-invalid.itf.json"]
-    assert File.dir?(run_directory)
+    assert Path.basename(invalid_path) == "b-invalid.itf.json"
 
-    manifest = read_manifest(run_directory)
-    assert manifest["artifacts"]["trace_paths"] == ["a-valid.itf.json", "b-invalid.itf.json"]
-    assert manifest["failure"]["trace_path"] == "b-invalid.itf.json"
+    assert %{
+             "outcome" => "materialized",
+             "artifacts" => %{"itf_paths" => ["a-valid.itf.json", "b-invalid.itf.json"]},
+             "failure" => nil
+           } = read_manifest(run_directory)
+
+    refute run_directory |> Path.join("victoria-run.json") |> File.exists?()
   end
 
-  test "wraps unsupported ITF values without flattening their structured paths", %{root: root} do
-    executable = root |> Path.join("tool") |> install_fake("bad-value")
+  test "returns upstream execution errors intact", %{root: root} do
+    missing = Path.join(root, "missing-apalache")
+    original_plan = plan(Path.join(root, "run"))
 
     assert {:error,
-            %Error{
-              phase: :trace_loading,
-              reason: {:invalid_trace, path, %ITF.Error{kind: :shape, path: nested_path}}
-            }} = root |> Path.join("run") |> plan() |> Apalache.run(executable: executable)
+            %Apalachex.Error{
+              phase: :executable_discovery,
+              reason: {:not_found, ^missing},
+              executable: nil,
+              version: nil,
+              exit_status: nil,
+              output: nil,
+              itf_paths: [],
+              manifest_failure: nil
+            } = error} = Apalache.run(original_plan, executable: missing)
 
-    assert Path.basename(path) == "unsupported.itf.json"
-    assert nested_path != []
+    assert error.plan.spec.source == original_plan.spec.source
+    assert error.plan.run_directory == original_plan.run_directory
   end
 
-  test "materializes a lasso unchanged without replaying it", %{root: root} do
-    executable = root |> Path.join("tool") |> install_fake("lasso")
+  test "returns upstream spec conversion errors intact", %{root: root} do
+    source = Path.join(root, "Removed.tla")
+    File.write!(source, "---- MODULE Removed ----\n====\n")
 
-    assert {:ok, %Result{traces: [trace]}} =
-             root |> Path.join("run") |> plan() |> Apalache.run(executable: executable)
+    original_plan =
+      Plan.new(%Spec{source: source, config: nil}, mode: :check, length: 1, run_directory: Path.join(root, "run"))
 
-    assert trace.loop_index == 1
+    File.rm!(source)
+
+    assert {:error, %Apalachex.Spec.Error{field: :source, path: ^source, reason: :not_found}} =
+             Apalache.run(original_plan, executable: Path.join(root, "unused"))
   end
 
-  test "bounds rendered output while preserving complete output in the error", %{root: root} do
-    executable = root |> Path.join("tool") |> install_fake("long-output")
-
-    assert {:error, %Error{output: output} = error} =
-             root |> Path.join("run") |> plan() |> Apalache.run(executable: executable)
-
-    assert byte_size(output) > 6000
-    assert byte_size(Exception.message(error)) < byte_size(output)
-    assert Exception.message(error) =~ "run directory"
-
-    summary = read_manifest(Path.join(root, "run"))["execution"]["output"]
-    assert summary["byte_size"] == byte_size(output)
-    assert summary["tail_truncated"]
-    assert byte_size(summary["tail"]) <= 4096
-  end
-
-  test "aligns a multibyte output tail without changing stored bytes", %{root: root} do
-    executable = root |> Path.join("multibyte-boundary") |> install_fake("multibyte-boundary")
-    expected_output = "standard output\nstandard error\n\u20ac" <> String.duplicate("x", 4094)
-
-    assert {:error, %Error{output: ^expected_output} = error} =
-             root |> Path.join("run") |> plan() |> Apalache.run(executable: executable)
-
-    message = Exception.message(error)
-
-    assert String.valid?(message)
-    assert byte_size(message) < 5000
-    assert message =~ "output tail:\n" <> String.duplicate("x", 4094)
-  end
-
-  test "escapes short invalid output without changing stored bytes", %{root: root} do
-    executable = root |> Path.join("short-bad-bytes") |> install_fake("short-bad-bytes")
-    expected_output = <<"standard output\nstandard error\n", 255, 254>>
-
-    assert {:error, %Error{output: ^expected_output} = error} =
-             root |> Path.join("run") |> plan() |> Apalache.run(executable: executable)
-
-    message = Exception.message(error)
-
-    assert String.valid?(message)
-    assert message =~ "output tail:\n<<"
-
-    summary = read_manifest(Path.join(root, "run"))["execution"]["output"]
-    assert summary["byte_size"] == byte_size(expected_output)
-    assert String.valid?(summary["tail"])
-    assert byte_size(summary["tail"]) <= 4096
-  end
-
-  defp plan(run_directory) do
-    Plan.new(%Spec{source: @source, config: @config},
-      mode: :simulate,
-      length: 2,
-      max_run: 1,
-      run_directory: run_directory
+  defp plan(run_directory, options \\ [mode: :simulate, length: 3, max_run: 2]) do
+    Plan.new(
+      %Spec{source: @source, config: @config},
+      Keyword.put(options, :run_directory, run_directory)
     )
   end
 
   defp install_fake(directory, name) do
-    File.mkdir_p!(directory)
     executable = Path.join(directory, name)
     File.cp!(@fixture_executable, executable)
-    File.cp!(@valid_trace, Path.join(directory, "valid.itf.json"))
-    File.cp!(@malformed_trace, Path.join(directory, "malformed.itf.json"))
-    File.cp!(@unsupported_trace, Path.join(directory, "unsupported.itf.json"))
-    File.cp!(@loop_trace, Path.join(directory, "loop.itf.json"))
+
+    for {source, target} <- [
+          {"counter.itf.json", "valid.itf.json"},
+          {"malformed_json.itf.json", "malformed.itf.json"},
+          {"counter_step_mismatch.itf.json", "step-mismatch.itf.json"},
+          {"loop.itf.json", "loop.itf.json"}
+        ] do
+      "../fixtures/#{source}"
+      |> Path.expand(__DIR__)
+      |> File.cp!(Path.join(directory, target))
+    end
+
     File.chmod!(executable, 0o755)
     Path.expand(executable)
   end
 
-  defp restore_env(name, nil), do: System.delete_env(name)
-  defp restore_env(name, value), do: System.put_env(name, value)
-
-  defp canonical_directory(path), do: File.cd!(path, &File.cwd!/0)
-
   defp read_manifest(run_directory) do
     run_directory
-    |> Path.join("victoria-run.json")
+    |> Path.join("apalachex-run.json")
     |> File.read!()
     |> JSON.decode!()
   end
-
-  defp reason_tag({tag, _one}), do: tag
-  defp reason_tag({tag, _one, _two}), do: tag
 end

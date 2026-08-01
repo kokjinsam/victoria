@@ -81,7 +81,8 @@ defmodule Victoria.ExUnitTest do
 
     assert [run_name] = File.ls!(artifact_root)
     run_directory = Path.join(artifact_root, run_name)
-    assert run_directory |> Path.join("victoria-run.json") |> File.regular?()
+    assert run_directory |> Path.join("apalachex-run.json") |> File.regular?()
+    refute run_directory |> Path.join("victoria-run.json") |> File.exists?()
     assert [_first_trace, _second_trace] = run_directory |> Path.join("*.itf.json") |> Path.wildcard()
 
     for event <- lifecycle() ++ lifecycle() do

@@ -33,6 +33,7 @@ defmodule Victoria.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:apalachex, "~> 0.1.0"},
       {:code_style, "~> 0.1.1", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false},

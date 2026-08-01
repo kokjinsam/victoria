@@ -11,7 +11,7 @@ wrapper around Apalache.
 | --- | ---: | --- |
 | `apalache-mc version` | 0 | Exact output `0.58.3\n` |
 | Pre-created empty `--run-dir` | 0 | Accepted for both `simulate` and `check`; Apalache populated the existing directory |
-| Pre-created nonempty `--run-dir` containing `victoria-run.json` | 0 | Placeholder manifest survived byte-for-byte unchanged; normal artifacts and `example.itf.json` plus `example1.itf.json` were produced |
+| Pre-created nonempty `--run-dir` containing a manifest | 0 | Placeholder manifest survived byte-for-byte unchanged; normal artifacts and `example.itf.json` plus `example1.itf.json` were produced |
 | `simulate --length=3 --max-run=1 --output-traces` | 0 | Top-level regular `example.itf.json` and `example1.itf.json` |
 | `simulate --length=3 --max-run=3 --output-traces` | 0 | Top-level regular `example.itf.json` and `example1.itf.json` through `example3.itf.json` |
 | Successful `check --length=3 --output-traces` | 0 | Top-level regular `example.itf.json` and `example0.itf.json` |
@@ -21,9 +21,9 @@ wrapper around Apalache.
 | `simulate --length=0 --max-run=1 --output-traces` | 0 | `example.itf.json` and `example1.itf.json`, each containing only state zero |
 
 The ITF files above were actual top-level regular files in the requested run directory. The duplicate
-unindexed/indexed file naming is an Apalache behavior; Victoria therefore discovers every matching file and
+unindexed/indexed file naming is an Apalache behavior; Apalachex therefore discovers every matching file and
 does not infer a trace count from `max-run`. Apalache's diagnostics also name its auxiliary
-`_apalache-out/<source>/<run>` workspace beneath the process working directory. Victoria treats only the
+`_apalache-out/<source>/<run>` workspace beneath the process working directory. Apalachex treats only the
 exclusively reserved `--run-dir` as its materialization boundary and does not search that auxiliary tree.
 
 The checked and simulated traces had no `loop` member. A real lasso-producing v0.58.3 input was not readily
@@ -55,4 +55,5 @@ apalache-mc simulate \
 The command exited 0. The manifest's SHA-256 was
 `e37db520a630551d848981f64e7ccf58ff87c88fbb37c2a5559e41abaf012f83` both before and after execution.
 Apalache also wrote its normal logs, generated source artifacts, and two top-level ITF traces. This proves
-that v0.58.3 tolerates Victoria committing a running manifest before process execution.
+that v0.58.3 tolerates a caller committing a running manifest before process execution. Apalachex now owns
+that reservation and writes `apalachex-run.json`; Victoria does not write a second manifest.

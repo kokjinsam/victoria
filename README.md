@@ -153,20 +153,22 @@ Generated workflows allocate an exclusive run directory below `tmp/victoria` by 
 one UTC timestamp, the TLA+ source basename, and a random six-character hexadecimal suffix. The
 `artifacts: [root: path]` workflow option selects another root.
 
-The run directory is retained on success and failure. Victoria never empties, reuses, or automatically
-removes it. `victoria-run.json` is written as `running` before Apalache starts and atomically replaced with a
-`completed` manifest after materialization succeeds or fails. A process interruption can therefore leave a
-retained `running` manifest; Victoria does not recover or resume it.
+The run directory is retained on success and failure. Apalachex exclusively reserves it and neither
+Apalachex nor Victoria empties, reuses, or automatically removes it. Apalachex writes `apalachex-run.json`
+as `running` before Apalache starts and atomically replaces it with a `completed` execution manifest after
+artifact discovery succeeds or fails. A process interruption can therefore leave a retained `running`
+manifest; neither library recovers or resumes it.
 
 The manifest records absolute spec/config paths, the executable path, working and run directories, complete
-argv, exit status, ordered relative trace paths, and a bounded output diagnostic. Do not place secrets in
-paths or command options. The public `Victoria.Apalache.Result` retains complete raw subprocess output bytes.
-Human-readable errors and manifests retain only a binary-safe tail of at most 4 KiB plus byte-count and
-truncation metadata.
+argv, exit status, ordered relative ITF paths, and a bounded output diagnostic. Do not place secrets in paths
+or command options. The public `Victoria.Apalache.Result` retains complete raw subprocess output bytes.
+Human-readable errors and manifests retain only bounded, binary-safe diagnostics.
 
-Only top-level regular `.itf.json` files are materialized; symlinks and nested files are ignored. A nonzero
-Apalache exit can still be a successful materialization when one or more valid traces were produced. Trace
-loading is all-or-nothing.
+Apalachex materializes only top-level regular `.itf.json` files; symlinks and nested files are ignored. A
+nonzero Apalache exit can still be a successful materialization when one or more artifacts were produced.
+Victoria then loads those paths in order using its own ITF decoder. Victoria trace loading is all-or-nothing,
+and `apalachex-run.json` truthfully remains `materialized` if Victoria later rejects an invalid ITF. Victoria
+does not write or rewrite a second manifest.
 
 ## Lower-level APIs
 
@@ -186,7 +188,7 @@ which traces to verify.
 
 ## Known limitations
 
-- Only Apalache v0.58.3 is supported.
+- Apalachex 0.1.x supports only Apalache v0.58.3.
 - Apalache execution is synchronous and has no Victoria timeout.
 - Cancellation and caller-death handling are not implemented.
 - Lasso traces can be materialized but cannot be replayed.

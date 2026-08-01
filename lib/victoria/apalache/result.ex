@@ -1,6 +1,6 @@
 defmodule Victoria.Apalache.Result do
   @moduledoc """
-  Complete context returned after successful Apalache trace materialization.
+  Complete Apalachex execution context after Victoria loaded every retained ITF artifact.
 
   Results are constructed by Victoria and should be treated as read-only. The
   `output` field contains complete raw subprocess bytes and may not be UTF-8.
@@ -12,7 +12,7 @@ defmodule Victoria.Apalache.Result do
   @enforce_keys [:plan, :executable, :version, :exit_status, :output, :trace_paths, :traces]
   defstruct [:plan, :executable, :version, :exit_status, :output, :trace_paths, :traces]
 
-  @typedoc "A materialized run with ordered trace paths and loaded traces."
+  @typedoc "An Apalachex run with ordered trace paths and Victoria-loaded traces."
   @type t :: %__MODULE__{
           plan: Plan.t(),
           executable: Path.t(),

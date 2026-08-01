@@ -49,7 +49,8 @@ if find "$package" \( -name test -o -name tmp -o -name _build -o -name deps -o -
   exit 1
 fi
 
-if find "$package" -type f \( -name '*.itf.json' -o -name 'victoria-run.json' -o -name 'apalache-mc' \
+if find "$package" -type f \( -name '*.itf.json' -o -name 'apalachex-run.json' -o -name 'victoria-run.json' \
+  -o -name 'apalache-mc' \
   -o -name '*.smt2' -o -name '*.sqlite' -o -name '*.beam' \) -print | grep -q .; then
   printf '%s\n' 'package contains a generated or executable artifact' >&2
   exit 1

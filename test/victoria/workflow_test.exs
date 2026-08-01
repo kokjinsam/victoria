@@ -1,7 +1,6 @@
 defmodule Victoria.WorkflowTest do
   use ExUnit.Case, async: false
 
-  alias Victoria.Apalache.Manifest
   alias Victoria.Runner.Failure
   alias Victoria.Spec
   alias Victoria.Test.CounterModel
@@ -140,7 +139,10 @@ defmodule Victoria.WorkflowTest do
       assert Path.dirname(apalache.plan.run_directory) == Path.expand(artifact_root)
       assert Path.basename(apalache.plan.run_directory) == "20260720T123456Z-counter-a1b2c3"
       assert report.trace_path == hd(apalache.trace_paths)
-      assert apalache.plan |> Manifest.path() |> File.regular?()
+
+      assert apalache.plan.run_directory
+             |> Path.join("apalachex-run.json")
+             |> File.regular?()
     end
   end
 
@@ -192,7 +194,17 @@ defmodule Victoria.WorkflowTest do
                )
              end)
 
-    assert last_error.reason == :run_directory_already_exists
+    assert %Apalachex.Error{
+             phase: :run_directory,
+             reason: :run_directory_already_exists,
+             executable: ^executable,
+             version: %Version{major: 0, minor: 58, patch: 3},
+             exit_status: nil,
+             output: nil,
+             itf_paths: [],
+             manifest_failure: nil
+           } = last_error
+
     assert last_error.plan.run_directory == candidate(exhaustion_root, "000008")
     assert Exception.message(error) =~ "Attempts:\n  8"
     assert Process.get(:workflow_test_suffixes) == []
@@ -206,7 +218,21 @@ defmodule Victoria.WorkflowTest do
     artifact_root = Path.join(root, "artifacts")
     missing = Path.join(root, "missing-apalache")
 
-    assert {:error, %Error{phase: :apalache, reason: reason}} =
+    assert {:error,
+            %Error{
+              phase: :apalache,
+              reason:
+                %Apalachex.Error{
+                  phase: :executable_discovery,
+                  reason: {:not_found, ^missing},
+                  executable: nil,
+                  version: nil,
+                  exit_status: nil,
+                  output: nil,
+                  itf_paths: [],
+                  manifest_failure: nil
+                } = reason
+            }} =
              with_runtime(["a1b2c3", "d4e5f6"], fn ->
                Workflow.run(CounterModel, spec,
                  plan: valid_plan(),
@@ -219,6 +245,48 @@ defmodule Victoria.WorkflowTest do
     assert_received {:workflow_suffix, "a1b2c3"}
     refute_received {:workflow_suffix, "d4e5f6"}
     refute File.exists?(artifact_root)
+  end
+
+  test "preserves non-collision run-directory and spec-conversion errors intact", %{root: root, spec: spec} do
+    executable = install_fake(root, "valid")
+    blocked_root = Path.join(root, "blocked")
+    File.write!(blocked_root, "file")
+
+    assert {:error,
+            %Error{
+              phase: :run_directory,
+              reason: %Apalachex.Error{
+                phase: :run_directory,
+                reason: {:parent_creation_failed, _reason},
+                executable: ^executable,
+                version: %Version{major: 0, minor: 58, patch: 3}
+              }
+            }} =
+             with_runtime(["a1b2c3"], fn ->
+               Workflow.run(CounterModel, spec,
+                 plan: valid_plan(),
+                 apalache: [executable: executable],
+                 artifacts: [root: blocked_root]
+               )
+             end)
+
+    source = Path.join(root, "Removed.tla")
+    File.write!(source, "---- MODULE Removed ----\n====\n")
+    {:ok, removed_spec} = Spec.new(source: source)
+    File.rm!(source)
+
+    assert {:error,
+            %Error{
+              phase: :apalache,
+              reason: %Apalachex.Spec.Error{field: :source, path: ^source, reason: :not_found}
+            }} =
+             with_runtime(["d4e5f6"], fn ->
+               Workflow.run(CounterModel, removed_spec,
+                 plan: valid_plan(),
+                 apalache: [executable: executable],
+                 artifacts: [root: Path.join(root, "removed-artifacts")]
+               )
+             end)
   end
 
   test "verifies duplicate traces sequentially with fresh lifecycles", %{root: root, spec: spec} do

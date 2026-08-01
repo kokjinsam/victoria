@@ -4,6 +4,14 @@ All notable changes to Victoria will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Replaced Victoria's duplicate Apalache executor with Apalachex 0.1.0 while preserving Victoria trace
+  decoding, verification, model lifecycle, result, workflow, and ExUnit contracts.
+- Made `apalachex-run.json` the sole execution and artifact manifest. Its `materialized` outcome records
+  discovered ITF artifacts and remains valid if Victoria later rejects an ITF during decoding.
+- Preserved upstream Apalachex execution and specification errors intact in workflow failures.
+
 ## [0.1.0] — 2026-07-20
 
 Initial public release.
