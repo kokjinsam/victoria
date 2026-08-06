@@ -12,8 +12,8 @@
   implementation verification.
 - **Artifact materialization** — Apalachex discovery of generated top-level ITF files, recorded independently
   of whether Victoria can decode them.
-- **Trace loading** — Victoria's ordered, all-or-nothing conversion of every Apalachex ITF path into validated
-  Victoria traces.
+- **Trace loading** — ordered, all-or-nothing decoding of every Apalachex ITF path by the standalone ITF
+  package and semantic adaptation into Victoria traces for replay.
 - **Supported Apalache version** — the exact Apalache release validated by the current Victoria release;
   Victoria 0.1.0 supports v0.58.3.
 - **Run directory** — the location exclusively reserved by Apalachex for one operation; its artifacts survive

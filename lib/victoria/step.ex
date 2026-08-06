@@ -9,7 +9,7 @@ defmodule Victoria.Step do
   @enforce_keys [:index, :action, :state]
   defstruct [:index, :action, :state]
 
-  @typedoc "A zero-based trace step with its action and projected state."
+  @typedoc "A zero-based trace step with its action and decoded ITF state."
   @type t :: %__MODULE__{
           index: non_neg_integer(),
           action: String.t(),

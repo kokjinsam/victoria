@@ -1,6 +1,6 @@
 defmodule Victoria.Trace do
   @moduledoc """
-  A validated, normalized formal trace.
+  A decoded ITF trace adapted for Victoria replay.
 
   Trace structs are returned by `load/1`; consumers should not construct them
   directly because loading establishes the structural and value invariants
@@ -30,6 +30,6 @@ defmodule Victoria.Trace do
         }
 
   @spec load(Path.t()) :: {:ok, t()} | {:error, ITF.Error.t()}
-  @doc "Loads and validates the supported ITF subset from `path`."
+  @doc "Loads an ITF document and adapts its trace semantics for Victoria replay."
   defdelegate load(path), to: ITF
 end

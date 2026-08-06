@@ -13,12 +13,14 @@ defmodule Victoria.TraceTest do
     assert {:ok, %Trace{source: ^source}} = Trace.load(source)
   end
 
-  test "preserves structured read, decode, and validation errors" do
+  test "preserves Victoria read, decode, and adaptation errors" do
     missing = fixture("missing.itf.json")
     assert {:error, %Error{source: ^missing, kind: :read, reason: :enoent, path: []}} = Trace.load(missing)
 
     malformed_json = fixture("malformed_json.itf.json")
-    assert {:error, %Error{source: ^malformed_json, kind: :decode}} = Trace.load(malformed_json)
+
+    assert {:error, %Error{source: ^malformed_json, kind: :decode, reason: :invalid_json}} =
+             Trace.load(malformed_json)
 
     malformed_state = fixture("malformed_state.itf.json")
 

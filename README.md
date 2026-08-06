@@ -166,7 +166,8 @@ Human-readable errors and manifests retain only bounded, binary-safe diagnostics
 
 Apalachex materializes only top-level regular `.itf.json` files; symlinks and nested files are ignored. A
 nonzero Apalache exit can still be a successful materialization when one or more artifacts were produced.
-Victoria then loads those paths in order using its own ITF decoder. Victoria trace loading is all-or-nothing,
+Victoria then loads those paths in order. The standalone ITF package owns format decoding, while Victoria
+owns semantic adaptation and replay. Victoria trace loading is all-or-nothing,
 and `apalachex-run.json` truthfully remains `materialized` if Victoria later rejects an invalid ITF. Victoria
 does not write or rewrite a second manifest.
 
@@ -192,7 +193,6 @@ which traces to verify.
 - Apalache execution is synchronous and has no Victoria timeout.
 - Cancellation and caller-death handling are not implemented.
 - Lasso traces can be materialized but cannot be replayed.
-- ITF tagged-value support is intentionally partial.
 - State comparison uses exact Elixir `===`.
 - Generated traces are verified sequentially.
 - Generated verification stops on the first failing trace.

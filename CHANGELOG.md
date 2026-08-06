@@ -6,6 +6,11 @@ All notable changes to Victoria will be documented in this file.
 
 ### Changed
 
+- Delegated ITF file reading and format decoding to the standalone ITF 0.1.x package while retaining
+  Victoria's trace adaptation, replay semantics, and public error boundary.
+- Accepted standalone ITF rich value structs unchanged in replay states.
+- Adopted ITF's default input-size and nesting-depth limits, decoded metadata behavior, and upstream
+  reason/path terminology where legacy decoder details cannot be reconstructed without decoding twice.
 - Replaced Victoria's duplicate Apalache executor with Apalachex 0.1.0 while preserving Victoria trace
   decoding, verification, model lifecycle, result, workflow, and ExUnit contracts.
 - Made `apalachex-run.json` the sole execution and artifact manifest. Its `materialized` outcome records
@@ -37,7 +42,6 @@ Initial public release.
 - Apalache execution is synchronous and has no Victoria timeout.
 - Cancellation and caller-death handling are not implemented.
 - Lasso traces can be materialized but cannot be replayed.
-- ITF tagged-value support is intentionally partial.
 - State comparison uses exact Elixir `===`.
 - Generated traces are verified sequentially.
 - Generated verification stops on the first failing trace.

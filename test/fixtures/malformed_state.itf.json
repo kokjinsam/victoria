@@ -3,6 +3,6 @@
   "vars": ["count", "lastTransition"],
   "states": [
     {"#meta": {"index": 0}, "count": {"#bigint": "0"}, "lastTransition": "Initial"},
-    {"#meta": {"index": 1}, "count": {"#bigint": "1"}, "lastTransition": 42}
+    {"#meta": {"index": 1}, "count": {"#bigint": "1"}, "lastTransition": true}
   ]
 }

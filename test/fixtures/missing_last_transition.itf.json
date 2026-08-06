@@ -1,0 +1,7 @@
+{
+  "#meta": {},
+  "vars": ["value"],
+  "states": [
+    {"#meta": {"index": 0}, "value": true}
+  ]
+}

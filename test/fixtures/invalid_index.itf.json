@@ -2,6 +2,9 @@
   "#meta": {},
   "vars": ["count", "lastTransition"],
   "states": [
-    {"#meta": {"index": 1}, "count": {"#bigint": "0"}, "lastTransition": "Initial"}
+    {"count": {"#bigint": "0"}, "lastTransition": "Initial"},
+    {"#meta": {}, "count": {"#bigint": "1"}, "lastTransition": "Increment"},
+    {"#meta": {"note": {"arbitrary": true}}, "count": {"#bigint": "2"}, "lastTransition": "Double"},
+    {"#meta": {"index": 99}, "count": {"#bigint": "3"}, "lastTransition": "Increment"}
   ]
 }

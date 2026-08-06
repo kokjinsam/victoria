@@ -1,0 +1,12 @@
+{
+  "#meta": {},
+  "vars": ["value", "lastTransition"],
+  "states": [
+    {
+      "#meta": {"index": 0},
+      "value": true,
+      "lastTransition": "Initial",
+      "undeclared": "extension"
+    }
+  ]
+}
