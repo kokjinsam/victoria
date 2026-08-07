@@ -26,8 +26,16 @@ end
 Fixed-trace verification requires Elixir 1.18 or later and does not require Apalache.
 
 Generated workflows require Elixir 1.18 or later, Apalache exactly v0.58.3, and Apalache's Java and solver
-runtime prerequisites on the test process's `PATH`. Victoria's release-readiness CI runs on Ubuntu. Other
-operating systems are not release-tested and Windows support is not claimed.
+runtime prerequisites on the test process's `PATH`. Victoria's CI runs on Ubuntu. Other operating systems
+are not CI-tested and Windows support is not claimed.
+
+## Development
+
+Victoria uses asdf 0.16.5 and the exact tool versions declared in `.tool-versions`. Install the complete
+toolchain with `just setup`, verify the active tools with `just doctor`, and fetch project dependencies with
+`just deps`. Run the ordinary test suite with `just test` or the full quality gate with `just check`.
+
+Use `just --list` to see the focused documentation, package, consumer, and real-Apalache checks used by CI.
 
 ## Model callback contract
 

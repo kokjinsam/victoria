@@ -6,6 +6,8 @@ All notable changes to Victoria will be documented in this file.
 
 ### Changed
 
+- Made the root Justfile the public development and CI command interface, with a repository-complete pinned
+  asdf toolchain and owned asdf provisioning for Apalache 0.58.3.
 - Delegated ITF file reading and format decoding to the standalone ITF 0.1.x package while retaining
   Victoria's trace adaptation, replay semantics, and public error boundary.
 - Accepted standalone ITF rich value structs unchanged in replay states.

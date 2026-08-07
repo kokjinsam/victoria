@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  minimum:
+    name: Elixir 1.18.4 / OTP 27.0
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: asdf-vm/actions/setup@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
+        with:
+          asdf_version: 0.16.5
+      - name: Bootstrap just
+        run: |
+          asdf plugin add just https://github.com/olofvndrhr/asdf-just.git
+          asdf install just
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          elixir-version: 1.18.4
+          otp-version: "27.0"
+          install-hex: false
+      - run: asdf exec just deps
+      - run: asdf exec just test-minimum
+
+  quality:
+    name: Quality / Elixir 1.20.0 / OTP 27.0
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: asdf-vm/actions/setup@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
+        with:
+          asdf_version: 0.16.5
+      - name: Bootstrap just
+        run: |
+          asdf plugin add just https://github.com/olofvndrhr/asdf-just.git
+          asdf install just
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          version-type: strict
+          version-file: .tool-versions
+      - run: asdf exec just deps
+      - run: asdf exec just check
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-24.04
+    env:
+      MIX_ENV: dev
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: asdf-vm/actions/setup@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
+        with:
+          asdf_version: 0.16.5
+      - name: Bootstrap just
+        run: |
+          asdf plugin add just https://github.com/olofvndrhr/asdf-just.git
+          asdf install just
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          version-type: strict
+          version-file: .tool-versions
+      - run: asdf exec just deps
+      - run: asdf exec just docs
+
+  package:
+    name: Package audit and fixed consumer
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: asdf-vm/actions/setup@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
+        with:
+          asdf_version: 0.16.5
+      - name: Bootstrap just
+        run: |
+          asdf plugin add just https://github.com/olofvndrhr/asdf-just.git
+          asdf install just
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          version-type: strict
+          version-file: .tool-versions
+      - run: asdf exec just deps
+      - run: asdf exec just package-audit
+      - run: asdf exec just consumer-fixed
+
+  apalache:
+    name: Real Apalache 0.58.3
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: asdf-vm/actions/setup@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
+        with:
+          asdf_version: 0.16.5
+      - name: Bootstrap just and Apalache
+        run: |
+          asdf plugin add just https://github.com/olofvndrhr/asdf-just.git
+          asdf plugin add apalache https://github.com/kokjinsam/asdf-apalache.git
+          asdf install just
+          asdf install apalache
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          version-type: strict
+          version-file: .tool-versions
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version-file: .tool-versions
+      - run: asdf exec just deps
+      - run: asdf exec just test-apalache
+
+  generated-consumer:
+    name: Generated package consumer / Apalache 0.58.3
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: asdf-vm/actions/setup@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
+        with:
+          asdf_version: 0.16.5
+      - name: Bootstrap just and Apalache
+        run: |
+          asdf plugin add just https://github.com/olofvndrhr/asdf-just.git
+          asdf plugin add apalache https://github.com/kokjinsam/asdf-apalache.git
+          asdf install just
+          asdf install apalache
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          version-type: strict
+          version-file: .tool-versions
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version-file: .tool-versions
+      - run: asdf exec just deps
+      - run: asdf exec just consumer-generated
