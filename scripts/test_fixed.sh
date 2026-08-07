@@ -1,15 +1,10 @@
 #!/bin/sh
 set -eu
 
-repository=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+repository=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 smoke_root=$(mktemp -d "${TMPDIR:-/tmp}/victoria-fixed-consumer.XXXXXX")
 package="$smoke_root/package"
 consumer="$smoke_root/consumer"
-
-cleanup() {
-  rm -rf -- "$smoke_root"
-}
-trap cleanup EXIT HUP INT TERM
 
 cd "$repository"
 mix hex.build --unpack --output "$package"

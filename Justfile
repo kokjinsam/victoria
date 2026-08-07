@@ -86,19 +86,10 @@ doctor:
     [[ "$(asdf exec apalache-mc version)" == "0.58.3" ]] || fail "unexpected Apalache version"
 
 deps:
-    mix local.hex 2.4.2 --force
     mix deps.get
 
 test:
-    mix test
-
-test-minimum:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    elixir_output="$(elixir --version)"
-    grep -Fq "Erlang/OTP 27" <<<"$elixir_output" || { printf 'test-minimum requires Erlang/OTP 27\n' >&2; exit 1; }
-    grep -Fq "Elixir 1.18.4" <<<"$elixir_output" || { printf 'test-minimum requires Elixir 1.18.4\n' >&2; exit 1; }
-    mix compile --warnings-as-errors
+    MIX_ENV=test mix compile --warnings-as-errors
     mix test
 
 check:
@@ -107,14 +98,11 @@ check:
 docs:
     MIX_ENV=dev mix docs --warnings-as-errors
 
-package-audit:
-    scripts/release/audit_package.sh
+test-fixed:
+    scripts/test_fixed.sh
 
-consumer-fixed:
-    scripts/release/consumer_fixed.sh
-
-consumer-generated:
-    scripts/release/consumer_generated.sh
+test-generated:
+    scripts/test_generated.sh
 
 test-apalache:
     mix test --include apalache test/victoria/apalache_integration_test.exs
