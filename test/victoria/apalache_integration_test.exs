@@ -24,6 +24,11 @@ defmodule Victoria.ApalacheIntegrationTest do
 
     root = Path.join(System.tmp_dir!(), "victoria-real-apalache-#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
+
+    "../../.tool-versions"
+    |> Path.expand(__DIR__)
+    |> File.cp!(Path.join(root, ".tool-versions"))
+
     on_exit(fn -> File.rm_rf!(root) end)
 
     %{executable: executable, root: root}

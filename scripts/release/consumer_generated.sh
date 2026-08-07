@@ -21,6 +21,7 @@ cd "$repository"
 mix hex.build --unpack --output "$package"
 mkdir "$consumer"
 cp -R test/consumers/generated/. "$consumer/"
+cp "$repository/.tool-versions" "$consumer/.tool-versions"
 
 cd "$consumer"
 VICTORIA_PACKAGE_PATH="$package" mix deps.get
