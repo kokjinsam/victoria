@@ -1,9 +1,11 @@
-defmodule Victoria.Internal.OutputTest do
+defmodule Victoria.OutputTest do
   use ExUnit.Case, async: true
 
-  alias Victoria.Internal.Output
+  alias Victoria.Output
 
   test "summarizes empty and ordinary UTF-8 output" do
+    assert Output.tail("ordinary output") == {"ordinary output", false}
+
     assert Output.summary("") == %{byte_size: 0, tail: "", tail_truncated: false}
 
     assert Output.summary("ordinary output") == %{

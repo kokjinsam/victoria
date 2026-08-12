@@ -1,4 +1,4 @@
-defmodule Victoria.Internal.Output do
+defmodule Victoria.Output do
   @moduledoc false
 
   @maximum_tail_bytes 4096

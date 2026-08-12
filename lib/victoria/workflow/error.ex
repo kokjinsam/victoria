@@ -7,7 +7,7 @@ defmodule Victoria.Workflow.Error do
   Apalache result.
   """
 
-  alias Victoria.Internal.Output
+  alias Victoria.Output
   alias Victoria.Spec
   alias Victoria.Workflow.Verification
 
