@@ -1,7 +1,6 @@
 defmodule Victoria.RunnerTest do
   use ExUnit.Case, async: true
 
-  alias Victoria.ITF
   alias Victoria.Runner
   alias Victoria.Runner.Failure
   alias Victoria.Runner.Report
@@ -62,7 +61,7 @@ defmodule Victoria.RunnerTest do
 
   test "replays real Apalache output through the complete Counter vertical slice" do
     trace_path = Path.join(@traces, "counter.itf.json")
-    assert {:ok, trace} = ITF.load(trace_path)
+    assert {:ok, trace} = Victoria.Trace.load(trace_path)
 
     assert {:ok,
             %Report{
@@ -97,7 +96,7 @@ defmodule Victoria.RunnerTest do
 
   test "reports an exact initial verification failure and never executes Initial" do
     trace_path = fixture("counter_initial_mismatch.itf.json")
-    assert {:ok, trace} = ITF.load(trace_path)
+    assert {:ok, trace} = Victoria.Trace.load(trace_path)
 
     assert {:error,
             %Failure{
@@ -116,7 +115,7 @@ defmodule Victoria.RunnerTest do
 
   test "stops at the first step verification failure and renders useful context" do
     trace_path = fixture("counter_step_mismatch.itf.json")
-    assert {:ok, trace} = ITF.load(trace_path)
+    assert {:ok, trace} = Victoria.Trace.load(trace_path)
 
     assert {:error,
             %Failure{
@@ -142,7 +141,7 @@ defmodule Victoria.RunnerTest do
   end
 
   test "rejects a lasso before init, execute, or cleanup" do
-    assert {:ok, trace} = "loop.itf.json" |> fixture() |> ITF.load()
+    assert {:ok, trace} = "loop.itf.json" |> fixture() |> Victoria.Trace.load()
 
     assert {:error,
             %Failure{
@@ -159,12 +158,12 @@ defmodule Victoria.RunnerTest do
 
   test "rejects a parameterized initial stutter before init, execute, or cleanup" do
     result =
-      with {:ok, trace} <- "parameterized_initial_stutter.itf.json" |> fixture() |> ITF.load() do
+      with {:ok, trace} <- "parameterized_initial_stutter.itf.json" |> fixture() |> Victoria.Trace.load() do
         Runner.replay(trace, TrackingCounterModel)
       end
 
     assert {:error,
-            %ITF.Error{
+            %Victoria.Trace.Error{
               reason: :unsupported_stutter,
               state_index: 1,
               action: "Initial",
@@ -249,7 +248,7 @@ defmodule Victoria.RunnerTest do
   defp fixture(name), do: Path.join(@fixtures, name)
 
   defp replay(name, model) do
-    assert {:ok, trace} = name |> fixture() |> ITF.load()
+    assert {:ok, trace} = name |> fixture() |> Victoria.Trace.load()
     Runner.replay(trace, model)
   end
 end

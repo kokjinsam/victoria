@@ -77,16 +77,11 @@ defmodule Victoria.MixProject do
         Victoria.Model,
         Victoria.Trace,
         Victoria.Step,
-        Victoria.ITF,
         Victoria.Runner,
         Victoria.Verifier
       ],
       "Apalache integration": [
-        Victoria.Spec,
-        Victoria.Apalache,
-        Victoria.Apalache.Plan,
-        Victoria.Apalache.RunDirectory,
-        Victoria.Apalache.Result
+        Victoria.Spec
       ],
       "Workflow orchestration": [
         Victoria.Workflow,
@@ -95,11 +90,9 @@ defmodule Victoria.MixProject do
       ],
       "ExUnit integration": [Victoria.ExUnit],
       Errors: [
-        Victoria.ITF.Error,
-        Victoria.Spec.Error,
+        Victoria.Trace.Error,
         Victoria.Runner.Failure,
         Victoria.VerificationFailure,
-        Victoria.Apalache.Error,
         Victoria.Workflow.Error
       ],
       Reports: [Victoria.Runner.Report]

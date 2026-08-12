@@ -1,7 +1,6 @@
 defmodule VictoriaTest do
   use ExUnit.Case, async: true
 
-  alias Victoria.ITF.Error
   alias Victoria.Runner.Failure
   alias Victoria.Runner.Report
   alias Victoria.Test.BrokenCounterModel
@@ -41,7 +40,7 @@ defmodule VictoriaTest do
   test "returns ITF errors unchanged" do
     path = fixture("missing.itf.json")
 
-    assert {:error, %Error{source: ^path, kind: :read, reason: :enoent, path: []}} =
+    assert {:error, %ITF.Error{source: ^path, reason: {:file_error, :enoent}, path: []}} =
              Victoria.verify(CounterModel, trace: path)
   end
 

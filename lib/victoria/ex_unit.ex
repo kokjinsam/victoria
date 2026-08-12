@@ -41,7 +41,8 @@ defmodule Victoria.ExUnit do
   def assert_conform(model, options) do
     case Victoria.verify(model, options) do
       {:ok, %Victoria.Runner.Report{}} -> :ok
-      {:error, %Victoria.ITF.Error{} = error} -> raise_assertion(error)
+      {:error, %ITF.Error{} = error} -> raise_assertion(error)
+      {:error, %Victoria.Trace.Error{} = error} -> raise_assertion(error)
       {:error, %Victoria.Runner.Failure{} = error} -> raise_assertion(error)
     end
   end

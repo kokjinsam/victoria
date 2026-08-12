@@ -1,14 +1,13 @@
-defmodule Victoria.ApalacheIntegrationTest do
+defmodule Victoria.WorkflowIntegrationTest do
   use ExUnit.Case, async: false
 
   import Victoria.ExUnit
 
-  alias Victoria.Apalache
-  alias Victoria.Apalache.Plan
-  alias Victoria.Apalache.Result
   alias Victoria.Spec
   alias Victoria.Test.CounterModel
   alias Victoria.Test.TrackingCounterModel
+  alias Victoria.Workflow
+  alias Victoria.Workflow.Result
 
   @moduletag :apalache
 
@@ -37,68 +36,58 @@ defmodule Victoria.ApalacheIntegrationTest do
   test "simulates Counter into validated traces and verifies every trace", context do
     {source, config} = copy_spec(context.root, "Counter", @counter_source, @counter_config)
     {:ok, spec} = Spec.new(source: source, config: config)
-    run_directory = Path.join(context.root, "simulate-run")
-
-    plan =
-      Plan.new(spec,
-        mode: :simulate,
-        length: 3,
-        max_run: 1,
-        run_directory: run_directory
-      )
+    artifact_root = Path.join(context.root, "simulate-runs")
 
     assert {:ok,
             %Result{
-              executable: executable,
-              version: %Version{major: 0, minor: 58, patch: 3},
-              exit_status: 0,
-              trace_paths: [_trace_path | _trace_paths] = trace_paths,
-              traces: [_trace | _traces] = traces
-            }} = Apalache.run(plan)
+              apalache: %Apalachex.Result{
+                executable: executable,
+                version: %Version{major: 0, minor: 58, patch: 3},
+                exit_status: 0,
+                itf_paths: [_itf_path | _itf_paths] = itf_paths
+              },
+              verifications: [_verification | _verifications] = verifications
+            }} =
+             Workflow.run(CounterModel, spec,
+               plan: [mode: :simulate, length: 3, max_run: 1],
+               artifacts: [root: artifact_root]
+             )
 
     assert executable == Path.expand(context.executable)
-    assert length(trace_paths) == length(traces)
+    assert length(itf_paths) == length(verifications)
+    assert Enum.map(verifications, & &1.trace_path) == itf_paths
 
+    assert [run_name] = File.ls!(artifact_root)
+    run_directory = Path.join(artifact_root, run_name)
     manifest = read_manifest(run_directory)
     assert manifest["status"] == "completed"
     assert manifest["outcome"] == "materialized"
     assert manifest["execution"]["exit_status"] == 0
-    assert manifest["artifacts"]["itf_paths"] == Enum.map(trace_paths, &Path.basename/1)
-
-    for trace <- traces do
-      assert {:ok, _report} = Victoria.verify(CounterModel, trace: trace)
-    end
+    assert manifest["artifacts"]["itf_paths"] == Enum.map(itf_paths, &Path.basename/1)
   end
 
   test "returns a successful materialization for a nonzero counterexample check", context do
     {source, config} = copy_spec(context.root, "Violation", @violation_source, @violation_config)
     {:ok, spec} = Spec.new(source: source, config: config)
 
-    run_directory = Path.join(context.root, "check-run")
-
-    plan =
-      Plan.new(spec,
-        mode: :check,
-        length: 3,
-        run_directory: run_directory
-      )
+    artifact_root = Path.join(context.root, "check-runs")
 
     assert {:ok,
             %Result{
-              exit_status: 12,
-              trace_paths: [_trace_path | _trace_paths],
-              traces: [_trace | _traces] = traces
+              apalache: %Apalachex.Result{exit_status: 12, itf_paths: [_itf_path | _itf_paths]},
+              verifications: [_verification | _verifications]
             }} =
-             Apalache.run(plan)
+             Workflow.run(CounterModel, spec,
+               plan: [mode: :check, length: 3],
+               artifacts: [root: artifact_root]
+             )
 
+    assert [run_name] = File.ls!(artifact_root)
+    run_directory = Path.join(artifact_root, run_name)
     manifest = read_manifest(run_directory)
     assert manifest["status"] == "completed"
     assert manifest["outcome"] == "materialized"
     assert manifest["execution"]["exit_status"] == 12
-
-    for trace <- traces do
-      assert {:ok, _report} = Victoria.verify(CounterModel, trace: trace)
-    end
   end
 
   test "asserts conformance through a real generated workflow", context do
@@ -115,22 +104,22 @@ defmodule Victoria.ApalacheIntegrationTest do
     assert [run_name] = File.ls!(artifact_root)
     run_directory = Path.join(artifact_root, run_name)
     manifest = read_manifest(run_directory)
-    trace_paths = manifest["artifacts"]["itf_paths"]
+    itf_paths = manifest["artifacts"]["itf_paths"]
 
     assert run_directory |> Path.join("apalachex-run.json") |> File.regular?()
     refute run_directory |> Path.join("victoria-run.json") |> File.exists?()
     assert manifest["status"] == "completed"
     assert manifest["outcome"] == "materialized"
     assert manifest["execution"]["apalache_version"] == "0.58.3"
-    assert [_trace_path | _trace_paths] = trace_paths
+    assert [_itf_path | _itf_paths] = itf_paths
 
-    for trace_path <- trace_paths do
-      assert run_directory |> Path.join(trace_path) |> File.regular?()
+    for itf_path <- itf_paths do
+      assert run_directory |> Path.join(itf_path) |> File.regular?()
     end
 
     messages = self() |> Process.info(:messages) |> elem(1)
-    assert Enum.count(messages, &(&1 == :init)) == length(trace_paths)
-    assert Enum.count(messages, &(&1 == :cleanup)) == length(trace_paths)
+    assert Enum.count(messages, &(&1 == :init)) == length(itf_paths)
+    assert Enum.count(messages, &(&1 == :cleanup)) == length(itf_paths)
   end
 
   defp copy_spec(root, name, source, config) do

@@ -1,10 +1,9 @@
-defmodule Victoria.ITFTest do
+defmodule Victoria.Trace.AdapterTest do
   use ExUnit.Case, async: true
 
-  alias Victoria.ITF
-  alias Victoria.ITF.Error
   alias Victoria.Step
   alias Victoria.Trace
+  alias Victoria.Trace.Error
 
   @fixtures Path.expand("fixtures", __DIR__)
   @traces Path.expand("traces", __DIR__)
@@ -33,7 +32,7 @@ defmodule Victoria.ITFTest do
                 %Step{index: 2, action: "Increment", state: %{"count" => 2}},
                 %Step{index: 3, action: "Decrement", state: %{"count" => 1}}
               ]
-            }} = ITF.load(source)
+            }} = Trace.load(source)
   end
 
   test "keeps parameters only in the initial step and removes lastTransition" do
@@ -125,30 +124,30 @@ defmodule Victoria.ITFTest do
             }} = load_fixture("unsupported_tuple.itf.json")
   end
 
-  test "keeps Victoria's outer read, decode, and adapter error contract" do
+  test "returns upstream ITF errors unchanged and Victoria adapter errors separately" do
     missing = fixture("missing.itf.json")
-    assert {:error, %Error{source: ^missing, kind: :read, reason: :enoent, path: []}} = ITF.load(missing)
+    assert {:error, %ITF.Error{} = missing_error} = Trace.load(missing)
+    assert {:error, ^missing_error} = ITF.load(missing)
 
     malformed_json = fixture("malformed_json.itf.json")
 
-    assert {:error, %Error{source: ^malformed_json, kind: :decode, reason: :invalid_json, path: []}} =
-             ITF.load(malformed_json)
+    assert {:error, %ITF.Error{} = json_error} = Trace.load(malformed_json)
+    assert {:error, ^json_error} = ITF.load(malformed_json)
 
     malformed_state = fixture("malformed_state.itf.json")
 
     assert {:error,
             %Error{
               source: ^malformed_state,
-              kind: :shape,
               reason: :last_transition_must_be_a_string,
               path: ["states", 1, "lastTransition"]
-            }} = ITF.load(malformed_state)
+            }} = Trace.load(malformed_state)
   end
 
   defp fixture(name), do: Path.join(@fixtures, name)
-  defp load_fixture(name), do: name |> fixture() |> ITF.load()
+  defp load_fixture(name), do: name |> fixture() |> Trace.load()
 
   defp assert_error(name, reason, path) do
-    assert {:error, %Error{kind: :shape, reason: ^reason, path: ^path}} = load_fixture(name)
+    assert {:error, %Error{reason: ^reason, path: ^path}} = load_fixture(name)
   end
 end

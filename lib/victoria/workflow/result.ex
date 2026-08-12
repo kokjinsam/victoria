@@ -5,7 +5,6 @@ defmodule Victoria.Workflow.Result do
   Results are constructed by Victoria and should be treated as read-only.
   """
 
-  alias Victoria.Apalache
   alias Victoria.Workflow.Verification
 
   @enforce_keys [:model, :apalache, :verifications]
@@ -14,7 +13,7 @@ defmodule Victoria.Workflow.Result do
   @typedoc "The Apalache result and every successful trace verification."
   @type t :: %__MODULE__{
           model: module(),
-          apalache: Apalache.Result.t(),
+          apalache: Apalachex.Result.t(),
           verifications: [Verification.t(), ...]
         }
 end

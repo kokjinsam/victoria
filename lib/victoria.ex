@@ -6,14 +6,14 @@ defmodule Victoria do
   Generated conformance workflows are provided by `Victoria.Workflow`.
   """
 
-  alias Victoria.ITF
   alias Victoria.Runner
   alias Victoria.Runner.Failure
   alias Victoria.Runner.Report
   alias Victoria.Trace
+  alias Victoria.Trace.Error
 
   @spec verify(module(), trace: Path.t() | Trace.t()) ::
-          {:ok, Report.t()} | {:error, ITF.Error.t() | Failure.t()}
+          {:ok, Report.t()} | {:error, ITF.Error.t() | Error.t() | Failure.t()}
   @doc """
   Replays one validated trace against `model`.
 

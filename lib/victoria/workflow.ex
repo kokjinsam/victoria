@@ -7,9 +7,6 @@ defmodule Victoria.Workflow do
   is synchronous, has no Victoria timeout, and retains Apalache artifacts.
   """
 
-  alias Victoria.Apalache
-  alias Victoria.Apalache.Plan
-  alias Victoria.Apalache.RunDirectory
   alias Victoria.Model
   alias Victoria.Spec
   alias Victoria.Workflow.Error
@@ -102,40 +99,47 @@ defmodule Victoria.Workflow do
     end
   end
 
-  defp validate_spec!(%Spec{}), do: :ok
-  defp validate_spec!(_spec), do: raise(ArgumentError, "expected the second argument to be a Victoria.Spec")
+  defp validate_spec!(%Apalachex.Spec{}), do: :ok
+  defp validate_spec!(_spec), do: raise(ArgumentError, "expected the second argument to be an Apalachex.Spec")
 
   defp allocate_and_run(model, spec, plan_options, apalache_options, artifact_options, generated_at, attempts_left) do
-    run_directory =
-      RunDirectory.build(
-        spec,
-        Keyword.merge(artifact_options, generated_at: generated_at, suffix: Runtime.suffix())
-      )
+    case revalidate_spec(spec) do
+      {:ok, current_spec} ->
+        run_directory =
+          Apalachex.RunDirectory.build(
+            current_spec,
+            generated_at: generated_at,
+            suffix: Runtime.suffix(),
+            root: Keyword.get(artifact_options, :root, "tmp/victoria")
+          )
 
-    plan = Plan.new(spec, Keyword.put(plan_options, :run_directory, run_directory))
+        plan = Apalachex.Plan.new(current_spec, Keyword.put(plan_options, :run_directory, run_directory))
 
-    case Apalache.run(plan, apalache_options) do
-      {:ok, apalache_result} ->
-        verify_traces(model, spec, apalache_result)
+        case Apalachex.run(plan, apalache_options) do
+          {:ok, apalache_result} ->
+            load_and_verify_traces(model, spec, apalache_result)
 
-      {:error, %Apalachex.Error{} = error} ->
-        handle_apalache_error(
-          error,
-          model,
-          spec,
-          plan_options,
-          apalache_options,
-          artifact_options,
-          generated_at,
-          attempts_left
-        )
+          {:error, %Apalachex.Error{} = error} ->
+            handle_apalache_error(
+              error,
+              model,
+              spec,
+              plan_options,
+              apalache_options,
+              artifact_options,
+              generated_at,
+              attempts_left
+            )
+        end
 
       {:error, %Apalachex.Spec.Error{} = error} ->
         workflow_error(:apalache, error, model, spec)
-
-      {:error, %Apalache.Error{} = error} ->
-        workflow_error(:apalache, error, model, spec)
     end
+  end
+
+  defp revalidate_spec(%Apalachex.Spec{} = spec) do
+    options = if spec.config, do: [source: spec.source, config: spec.config], else: [source: spec.source]
+    Apalachex.Spec.new(options)
   end
 
   defp handle_apalache_error(
@@ -173,9 +177,31 @@ defmodule Victoria.Workflow do
     workflow_error(phase, error, model, spec)
   end
 
-  defp verify_traces(model, spec, apalache_result) do
-    apalache_result.trace_paths
-    |> Enum.zip(apalache_result.traces)
+  defp load_and_verify_traces(model, spec, apalache_result) do
+    case load_traces(apalache_result.itf_paths) do
+      {:ok, traces} -> verify_traces(model, spec, apalache_result, traces)
+      {:error, index, path, reason} -> trace_loading_error(model, spec, apalache_result, index, path, reason)
+    end
+  end
+
+  defp load_traces(paths) do
+    paths
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {path, index}, {:ok, traces} ->
+      case Victoria.Trace.load(path) do
+        {:ok, trace} -> {:cont, {:ok, [trace | traces]}}
+        {:error, error} -> {:halt, {:error, index, path, error}}
+      end
+    end)
+    |> case do
+      {:ok, traces} -> {:ok, Enum.reverse(traces)}
+      error -> error
+    end
+  end
+
+  defp verify_traces(model, spec, apalache_result, traces) do
+    apalache_result.itf_paths
+    |> Enum.zip(traces)
     |> Enum.with_index()
     |> Enum.reduce_while([], fn {{trace_path, trace}, trace_index}, completed ->
       case Victoria.verify(model, trace: trace) do
@@ -202,6 +228,20 @@ defmodule Victoria.Workflow do
       {:error, %Error{} = error} -> {:error, error}
       completed -> {:ok, %Result{model: model, apalache: apalache_result, verifications: Enum.reverse(completed)}}
     end
+  end
+
+  defp trace_loading_error(model, spec, apalache_result, index, path, reason) do
+    {:error,
+     %Error{
+       phase: :apalache,
+       reason: reason,
+       model: model,
+       spec: spec,
+       apalache: apalache_result,
+       trace_index: index,
+       trace_path: path,
+       completed_verifications: []
+     }}
   end
 
   defp workflow_error(phase, reason, model, spec) do

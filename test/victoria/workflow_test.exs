@@ -15,6 +15,7 @@ defmodule Victoria.WorkflowTest do
   @valid_trace Path.expand("../fixtures/counter.itf.json", __DIR__)
   @mismatch_trace Path.expand("../fixtures/counter_step_mismatch.itf.json", __DIR__)
   @malformed_trace Path.expand("../fixtures/malformed_json.itf.json", __DIR__)
+  @malformed_state_trace Path.expand("../fixtures/malformed_state.itf.json", __DIR__)
   @unsupported_trace Path.expand("../fixtures/unsupported_set.itf.json", __DIR__)
   @loop_trace Path.expand("../fixtures/loop.itf.json", __DIR__)
   @source Path.expand("../specs/Counter.tla", __DIR__)
@@ -76,7 +77,8 @@ defmodule Victoria.WorkflowTest do
       fn -> Workflow.run("model", spec, plan: valid_plan()) end,
       fn -> Workflow.run(Victoria.WorkflowTest.Missing, spec, plan: valid_plan()) end,
       fn -> Workflow.run(IncompleteModel, spec, plan: valid_plan()) end,
-      fn -> Workflow.run(StructuralModel, %{}, plan: valid_plan()) end,
+      # credo:disable-for-next-line Credo.Check.Refactor.Apply
+      fn -> apply(Workflow, :run, [StructuralModel, %{}, [plan: valid_plan()]]) end,
       # credo:disable-for-next-line Credo.Check.Refactor.Apply
       fn -> apply(Workflow, :run, [StructuralModel, spec, %{}]) end,
       fn -> Workflow.run(StructuralModel, spec, []) end,
@@ -138,7 +140,7 @@ defmodule Victoria.WorkflowTest do
       assert apalache.exit_status == 12
       assert Path.dirname(apalache.plan.run_directory) == Path.expand(artifact_root)
       assert Path.basename(apalache.plan.run_directory) == "20260720T123456Z-counter-a1b2c3"
-      assert report.trace_path == hd(apalache.trace_paths)
+      assert report.trace_path == hd(apalache.itf_paths)
 
       assert apalache.plan.run_directory
              |> Path.join("apalachex-run.json")
@@ -247,6 +249,67 @@ defmodule Victoria.WorkflowTest do
     refute File.exists?(artifact_root)
   end
 
+  test "keeps the default artifact root at tmp/victoria", %{root: root, spec: spec} do
+    missing = Path.join(root, "missing-apalache")
+
+    assert {:error, %Error{reason: %Apalachex.Error{plan: plan}}} =
+             with_runtime(["a1b2c3"], fn ->
+               Workflow.run(CounterModel, spec,
+                 plan: valid_plan(),
+                 apalache: [executable: missing]
+               )
+             end)
+
+    assert Path.dirname(plan.run_directory) == Path.expand("tmp/victoria")
+  end
+
+  test "loads every generated path before model initialization and preserves the loading failure", %{
+    root: root,
+    spec: spec
+  } do
+    for {name, expected_error} <- [
+          {"mixed", ITF.Error},
+          {"adapter-invalid", Victoria.Trace.Error},
+          {"mixed-binary", ITF.Error}
+        ] do
+      executable = install_fake(root, name)
+
+      assert {:error,
+              %Error{
+                phase: :apalache,
+                reason: reason,
+                apalache: %Apalachex.Result{output: output, itf_paths: paths} = apalache,
+                trace_index: 1,
+                trace_path: invalid_path,
+                completed_verifications: []
+              } = error} =
+               with_runtime([suffix_for(name)], fn ->
+                 Workflow.run(TrackingCounterModel, spec,
+                   plan: valid_plan(),
+                   apalache: [executable: executable],
+                   artifacts: [root: Path.join(root, "#{name}-artifacts")]
+                 )
+               end)
+
+      assert reason.__struct__ == expected_error
+      assert Enum.map(paths, &Path.basename/1) == ["a-valid.itf.json", "b-invalid.itf.json"]
+      assert invalid_path == Enum.at(paths, 1)
+      assert error.apalache == apalache
+
+      expected_output =
+        if name == "mixed-binary",
+          do: "standard output\nstandard error\n" <> <<255, 254>>,
+          else: "standard output\nstandard error\n"
+
+      assert output == expected_output
+      message = Exception.message(error)
+      assert String.valid?(message)
+      assert byte_size(message) < 8192
+      assert message =~ "Apalache output tail:"
+      refute_received :init
+    end
+  end
+
   test "preserves non-collision run-directory and spec-conversion errors intact", %{root: root, spec: spec} do
     executable = install_fake(root, "valid")
     blocked_root = Path.join(root, "blocked")
@@ -289,6 +352,40 @@ defmodule Victoria.WorkflowTest do
              end)
   end
 
+  test "revalidates the spec before each complete collision retry", %{root: root} do
+    executable = install_fake(root, "valid")
+    source = Path.join(root, "RemovedAfterCollision.tla")
+    File.write!(source, "---- MODULE RemovedAfterCollision ----\n====\n")
+    {:ok, spec} = Spec.new(source: source)
+    artifact_root = Path.join(root, "retry-artifacts")
+
+    artifact_root
+    |> candidate_for_source("removedaftercollision", "a1b2c3")
+    |> File.mkdir_p!()
+
+    suffix = fn ->
+      send(self(), :retry_suffix)
+      File.rm!(source)
+      "a1b2c3"
+    end
+
+    assert {:error,
+            %Error{
+              phase: :apalache,
+              reason: %Apalachex.Spec.Error{field: :source, path: ^source, reason: :not_found}
+            }} =
+             Runtime.with_sources(fn -> @generated_at end, suffix, fn ->
+               Workflow.run(CounterModel, spec,
+                 plan: valid_plan(),
+                 apalache: [executable: executable],
+                 artifacts: [root: artifact_root]
+               )
+             end)
+
+    assert_received :retry_suffix
+    refute_received :retry_suffix
+  end
+
   test "verifies duplicate traces sequentially with fresh lifecycles", %{root: root, spec: spec} do
     executable = install_fake(root, "multiple")
 
@@ -302,8 +399,7 @@ defmodule Victoria.WorkflowTest do
              end)
 
     assert Enum.map(verifications, & &1.trace_index) == [0, 1]
-    assert Enum.map(verifications, & &1.trace_path) == apalache.trace_paths
-    assert length(verifications) == length(apalache.traces)
+    assert Enum.map(verifications, & &1.trace_path) == apalache.itf_paths
 
     expected_lifecycle = [
       :init,
@@ -338,8 +434,7 @@ defmodule Victoria.WorkflowTest do
                )
              end)
 
-    assert trace_path == Enum.at(apalache.trace_paths, 1)
-    assert [_first_trace, _second_trace, _third_trace] = apalache.traces
+    assert trace_path == Enum.at(apalache.itf_paths, 1)
     assert_received :workflow_init
     assert_received :workflow_cleanup
     assert_received :workflow_init
@@ -361,7 +456,7 @@ defmodule Victoria.WorkflowTest do
               reason: %Failure{phase: :trace_validation, reason: {:unsupported_lasso, 1}},
               trace_index: 0,
               completed_verifications: [],
-              apalache: apalache
+              apalache: %Apalachex.Result{}
             }} =
              with_runtime(["a1b2c3"], fn ->
                Workflow.run(CounterModel, spec,
@@ -370,8 +465,6 @@ defmodule Victoria.WorkflowTest do
                  artifacts: [root: Path.join(root, "artifacts")]
                )
              end)
-
-    assert [_trace] = apalache.traces
   end
 
   test "production suffixes are six lowercase hexadecimal characters" do
@@ -380,10 +473,20 @@ defmodule Victoria.WorkflowTest do
 
   defp valid_plan, do: [mode: :simulate, length: 3, max_run: 1]
 
+  defp suffix_for("mixed"), do: "a1b2c3"
+  defp suffix_for("adapter-invalid"), do: "d4e5f6"
+  defp suffix_for("mixed-binary"), do: "abcdef"
+
   defp candidate(root, suffix) do
     root
     |> Path.expand()
     |> Path.join("20260720T123456Z-counter-#{suffix}")
+  end
+
+  defp candidate_for_source(root, source_slug, suffix) do
+    root
+    |> Path.expand()
+    |> Path.join("20260720T123456Z-#{source_slug}-#{suffix}")
   end
 
   defp with_runtime(suffixes, function) do
@@ -411,6 +514,7 @@ defmodule Victoria.WorkflowTest do
     File.cp!(@valid_trace, Path.join(directory, "valid.itf.json"))
     File.cp!(@mismatch_trace, Path.join(directory, "step-mismatch.itf.json"))
     File.cp!(@malformed_trace, Path.join(directory, "malformed.itf.json"))
+    File.cp!(@malformed_state_trace, Path.join(directory, "malformed-state.itf.json"))
     File.cp!(@unsupported_trace, Path.join(directory, "unsupported.itf.json"))
     File.cp!(@loop_trace, Path.join(directory, "loop.itf.json"))
     File.chmod!(executable, 0o755)

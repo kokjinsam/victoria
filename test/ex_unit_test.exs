@@ -60,7 +60,19 @@ defmodule Victoria.ExUnitTest do
         assert_conform(CounterModel, trace: path)
       end
 
-    assert error.message == "read error at #{path}: :enoent"
+    assert error.message == "invalid ITF from #{inspect(path)} at $: {:file_error, :enoent}"
+  end
+
+  test "converts a Victoria trace-adaptation error using its authoritative rendering" do
+    path = fixture("malformed_state.itf.json")
+
+    error =
+      assert_raise ExUnit.AssertionError, fn ->
+        assert_conform(CounterModel, trace: path)
+      end
+
+    assert error.message ==
+             "trace adaptation error at #{path}:states[1].lastTransition: :last_transition_must_be_a_string"
   end
 
   test "lets invalid-option ArgumentError propagate" do

@@ -31,8 +31,8 @@
   manifest so observers never see partially written JSON; this is not a power-loss durability guarantee.
 - **Successful materialization** — a terminated Apalache process for which Apalachex found one or more ITF
   artifacts, regardless of raw exit status or whether Victoria later accepts their contents.
-- **Apalache result** — complete execution context with plural, lexically ordered trace paths and their
-  positionally corresponding validated traces.
+- **Apalache result** — an `Apalachex.Result` with complete execution context and ordered `itf_paths`.
+  It does not contain Victoria traces.
 - **Conformance workflow** — a high-level operation that allocates an Apalache run, loads its materialized
   artifacts as formal traces, and verifies those traces against an implementation model.
 - **Workflow verification** — the result of verifying one generated trace through an independent
@@ -42,7 +42,7 @@
 - **Completed verification** — a successful verification report produced before a later trace failed.
 - **Workflow success** — an Apalache run materialized one or more ITF artifacts, Victoria loaded them as
   traces, and every trace conformed. The workflow does not deduplicate traces, every trace starts a fresh
-  implementation lifecycle, lower-level APIs remain independently usable, and no workflow-level durable
+  implementation lifecycle, direct Apalachex lower-level APIs remain independently usable, and no workflow-level durable
   manifest exists.
 - **Generated conformance assertion** — `Victoria.ExUnit.assert_conform/3` runs a complete generated
   conformance workflow from a validated Spec and raises `ExUnit.AssertionError` when controlled Apalache,

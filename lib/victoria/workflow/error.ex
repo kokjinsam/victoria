@@ -7,8 +7,7 @@ defmodule Victoria.Workflow.Error do
   Apalache result.
   """
 
-  alias Victoria.Apalache
-  alias Victoria.Apalache.Output
+  alias Victoria.Internal.Output
   alias Victoria.Spec
   alias Victoria.Workflow.Verification
 
@@ -31,7 +30,7 @@ defmodule Victoria.Workflow.Error do
           reason: term(),
           model: module(),
           spec: Spec.t(),
-          apalache: Apalache.Result.t() | nil,
+          apalache: Apalachex.Result.t() | nil,
           trace_index: non_neg_integer() | nil,
           trace_path: Path.t() | nil,
           completed_verifications: [Verification.t()]
@@ -65,6 +64,22 @@ defmodule Victoria.Workflow.Error do
     )
   end
 
+  def message(%__MODULE__{phase: :apalache, apalache: %Apalachex.Result{}, trace_path: path} = error)
+      when is_binary(path) do
+    Enum.join(
+      [
+        "Victoria workflow could not load a generated trace",
+        field("Model", inspect(error.model)),
+        field("Specification", error.spec.source),
+        field("Trace index", error.trace_index),
+        field("Trace", path),
+        field("Cause", render_reason(error.reason)),
+        output_field(error.apalache.output)
+      ],
+      "\n\n"
+    )
+  end
+
   def message(%__MODULE__{} = error) do
     Enum.join(
       [
@@ -78,6 +93,9 @@ defmodule Victoria.Workflow.Error do
   end
 
   defp field(label, value), do: "#{label}:\n  #{value}"
+
+  defp output_field(""), do: nil
+  defp output_field(output) when is_binary(output), do: field("Apalache output tail", output |> Output.tail() |> elem(0))
 
   defp render_reason(%{__exception__: true} = exception) do
     exception

@@ -1,7 +1,7 @@
-defmodule Victoria.Apalache.OutputTest do
+defmodule Victoria.Internal.OutputTest do
   use ExUnit.Case, async: true
 
-  alias Victoria.Apalache.Output
+  alias Victoria.Internal.Output
 
   test "summarizes empty and ordinary UTF-8 output" do
     assert Output.summary("") == %{byte_size: 0, tail: "", tail_truncated: false}

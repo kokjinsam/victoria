@@ -40,8 +40,17 @@ printf 'standard error\n' >&2
 case "$name" in
   *no-trace-nonzero*) exit 9 ;;
   *no-trace*) exit 0 ;;
+  *adapter-invalid*)
+    cp "$script_directory/valid.itf.json" "$run_directory/a-valid.itf.json"
+    cp "$script_directory/malformed-state.itf.json" "$run_directory/b-invalid.itf.json"
+    ;;
   *invalid*) cp "$script_directory/malformed.itf.json" "$run_directory/invalid.itf.json" ;;
   *bad-value*) cp "$script_directory/unsupported.itf.json" "$run_directory/unsupported.itf.json" ;;
+  *mixed-binary*)
+    cp "$script_directory/valid.itf.json" "$run_directory/a-valid.itf.json"
+    cp "$script_directory/malformed.itf.json" "$run_directory/b-invalid.itf.json"
+    printf '\377\376'
+    ;;
   *mixed*)
     cp "$script_directory/valid.itf.json" "$run_directory/a-valid.itf.json"
     cp "$script_directory/malformed.itf.json" "$run_directory/b-invalid.itf.json"

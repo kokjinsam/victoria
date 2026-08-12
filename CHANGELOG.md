@@ -18,6 +18,12 @@ All notable changes to Victoria will be documented in this file.
 - Made `apalachex-run.json` the sole execution and artifact manifest. Its `materialized` outcome records
   discovered ITF artifacts and remains valid if Victoria later rejects an ITF during decoding.
 - Preserved upstream Apalachex execution and specification errors intact in workflow failures.
+- Removed the low-level `Victoria.Apalache` modules in favor of direct Apalachex 0.1.x composition.
+- Changed `Victoria.Spec.new/1` to return `Apalachex.Spec` and preserve `Apalachex.Spec.Error`.
+- Changed workflow result and error `apalache` fields to `Apalachex.Result`, with ordered `itf_paths` and no
+  loaded `traces` field.
+- Removed `Victoria.ITF`. `Victoria.Trace.load/1` now preserves generic `ITF.Error` values and returns
+  `Victoria.Trace.Error` only for Victoria adaptation failures.
 
 ## [0.1.0] — 2026-07-20
 

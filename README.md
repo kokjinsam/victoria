@@ -101,8 +101,9 @@ import Victoria.ExUnit
 :ok = assert_conform(Counter.Model, trace: "test/traces/counter.itf.json")
 ```
 
-`Victoria.verify/2` returns a `Victoria.Runner.Report` on success, `Victoria.ITF.Error` when loading fails,
-or `Victoria.Runner.Failure` when replay fails. The assertion converts controlled failures to
+`Victoria.verify/2` returns a `Victoria.Runner.Report` on success, an upstream `ITF.Error` for generic
+file, JSON, or ITF failures, `Victoria.Trace.Error` for Victoria adaptation failures, or
+`Victoria.Runner.Failure` when replay fails. The assertion converts controlled failures to
 `ExUnit.AssertionError`; programmer misuse remains `ArgumentError`.
 
 ## Generated conformance workflow
@@ -137,7 +138,7 @@ import Victoria.ExUnit
   )
 ```
 
-Generated traces are verified sequentially in lexical artifact-path order, without deduplication. Every
+Generated traces are verified sequentially in the order supplied by Apalachex, without deduplication. Every
 trace gets a fresh model lifecycle and verification stops on the first failure.
 
 ## Verification semantics
@@ -169,7 +170,8 @@ manifest; neither library recovers or resumes it.
 
 The manifest records absolute spec/config paths, the executable path, working and run directories, complete
 argv, exit status, ordered relative ITF paths, and a bounded output diagnostic. Do not place secrets in paths
-or command options. The public `Victoria.Apalache.Result` retains complete raw subprocess output bytes.
+or command options. `Victoria.Workflow.Result.apalache` is an `Apalachex.Result` and retains complete raw
+subprocess output bytes and ordered `itf_paths`; it does not contain loaded traces.
 Human-readable errors and manifests retain only bounded, binary-safe diagnostics.
 
 Apalachex materializes only top-level regular `.itf.json` files; symlinks and nested files are ignored. A
@@ -181,19 +183,21 @@ does not write or rewrite a second manifest.
 
 ## Lower-level APIs
 
-Advanced callers may explicitly compose:
+Advanced callers can use the Apalachex 0.1.x API directly:
 
 ```text
-Victoria.Spec
-  → Victoria.Apalache.RunDirectory
-  → Victoria.Apalache.Plan
-  → Victoria.Apalache.run/2
-  → Victoria.Apalache.Result
+Victoria.Spec.new/1 → Apalachex.Spec
+  → Apalachex.RunDirectory.build/2
+  → Apalachex.Plan.new/2
+  → Apalachex.run/2
+  → Apalachex.Result.itf_paths
+  → Victoria.Trace.load/1
   → Victoria.verify/2
 ```
 
-Use these APIs when the caller must own the run path or separately inspect materialization before deciding
-which traces to verify.
+The low-level `Victoria.Apalache` modules and `Victoria.ITF` were removed during the direct 0.x dependency
+boundary cleanup. `Victoria.Spec.new/1` now returns `Apalachex.Spec` and preserves
+`Apalachex.Spec.Error` unchanged.
 
 ## Known limitations
 

@@ -7,8 +7,8 @@ defmodule Victoria.Trace do
   required by the runner.
   """
 
-  alias Victoria.ITF
   alias Victoria.Step
+  alias Victoria.Trace.Loader
 
   @enforce_keys [:source, :metadata, :steps, :loop_index]
   defstruct [:source, :metadata, :steps, :loop_index]
@@ -29,7 +29,7 @@ defmodule Victoria.Trace do
           loop_index: non_neg_integer() | nil
         }
 
-  @spec load(Path.t()) :: {:ok, t()} | {:error, ITF.Error.t()}
+  @spec load(Path.t()) :: {:ok, t()} | {:error, ITF.Error.t() | Victoria.Trace.Error.t()}
   @doc "Loads an ITF document and adapts its trace semantics for Victoria replay."
-  defdelegate load(path), to: ITF
+  defdelegate load(path), to: Loader
 end
