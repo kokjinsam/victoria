@@ -14,40 +14,32 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - name: Set up asdf
-        uses: asdf-vm/actions/setup@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
-        with:
-          asdf_version: 0.16.5
-      - name: Bootstrap just
-        run: |
-          asdf plugin add just https://github.com/olofvndrhr/asdf-just.git
-          asdf install just
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
           elixir-version: 1.18.4
           otp-version: "27.0"
-      - run: asdf exec just deps
-      - run: asdf exec just test
+      - uses: kokjinsam/setup-just@b9f410dbf89011f35a769946349ac7e2f040dbd0 # v1.0.0
+        with:
+          version-type: strict
+          version-file: .tool-versions
+      - run: just deps
+      - run: just test
 
-  quality:
-    name: Quality / Elixir 1.20.0 / OTP 27.0
+  current:
+    name: Current / Elixir 1.20.0 / OTP 27.0
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - name: Set up asdf
-        uses: asdf-vm/actions/setup@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
-        with:
-          asdf_version: 0.16.5
-      - name: Bootstrap just
-        run: |
-          asdf plugin add just https://github.com/olofvndrhr/asdf-just.git
-          asdf install just
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
           version-type: strict
           version-file: .tool-versions
-      - run: asdf exec just deps
-      - run: asdf exec just check
+      - uses: kokjinsam/setup-just@b9f410dbf89011f35a769946349ac7e2f040dbd0 # v1.0.0
+        with:
+          version-type: strict
+          version-file: .tool-versions
+      - run: just deps
+      - run: just check
 
   docs:
     name: Documentation
@@ -56,57 +48,39 @@ jobs:
       MIX_ENV: dev
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - name: Set up asdf
-        uses: asdf-vm/actions/setup@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
-        with:
-          asdf_version: 0.16.5
-      - name: Bootstrap just
-        run: |
-          asdf plugin add just https://github.com/olofvndrhr/asdf-just.git
-          asdf install just
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
           version-type: strict
           version-file: .tool-versions
-      - run: asdf exec just deps
-      - run: asdf exec just docs
+      - uses: kokjinsam/setup-just@b9f410dbf89011f35a769946349ac7e2f040dbd0 # v1.0.0
+        with:
+          version-type: strict
+          version-file: .tool-versions
+      - run: just deps
+      - run: just docs
 
   package:
     name: Fixed-trace package test
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - name: Set up asdf
-        uses: asdf-vm/actions/setup@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
-        with:
-          asdf_version: 0.16.5
-      - name: Bootstrap just
-        run: |
-          asdf plugin add just https://github.com/olofvndrhr/asdf-just.git
-          asdf install just
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
           version-type: strict
           version-file: .tool-versions
-      - run: asdf exec just deps
-      - run: asdf exec just test-fixed
+      - uses: kokjinsam/setup-just@b9f410dbf89011f35a769946349ac7e2f040dbd0 # v1.0.0
+        with:
+          version-type: strict
+          version-file: .tool-versions
+      - run: just deps
+      - run: just test-fixed
 
   apalache:
-    name: Real Apalache 0.58.3
+    name: Apalache 0.58.3
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - name: Set up asdf
-        uses: asdf-vm/actions/setup@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
-        with:
-          asdf_version: 0.16.5
-      - name: Bootstrap just and Apalache
-        run: |
-          asdf plugin add just https://github.com/olofvndrhr/asdf-just.git
-          asdf plugin add apalache https://github.com/kokjinsam/asdf-apalache.git
-          asdf install just
-          asdf install apalache
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
           version-type: strict
@@ -115,8 +89,15 @@ jobs:
         with:
           distribution: temurin
           java-version-file: .tool-versions
-      - run: asdf exec just deps
-      - run: asdf exec just test-apalache
+      - uses: kokjinsam/setup-just@b9f410dbf89011f35a769946349ac7e2f040dbd0 # v1.0.0
+        with:
+          version-type: strict
+          version-file: .tool-versions
+      - uses: kokjinsam/setup-apalache@0fd33ad7d7b5a4d138b93e32abdd31fd6b6de3b5
+        with:
+          version-file: .tool-versions
+      - run: just deps
+      - run: just test-apalache
 
   generated-consumer:
     name: Generated-workflow package test / Apalache 0.58.3
@@ -124,16 +105,6 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - name: Set up asdf
-        uses: asdf-vm/actions/setup@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
-        with:
-          asdf_version: 0.16.5
-      - name: Bootstrap just and Apalache
-        run: |
-          asdf plugin add just https://github.com/olofvndrhr/asdf-just.git
-          asdf plugin add apalache https://github.com/kokjinsam/asdf-apalache.git
-          asdf install just
-          asdf install apalache
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
           version-type: strict
@@ -142,5 +113,12 @@ jobs:
         with:
           distribution: temurin
           java-version-file: .tool-versions
-      - run: asdf exec just deps
-      - run: asdf exec just test-generated
+      - uses: kokjinsam/setup-just@b9f410dbf89011f35a769946349ac7e2f040dbd0 # v1.0.0
+        with:
+          version-type: strict
+          version-file: .tool-versions
+      - uses: kokjinsam/setup-apalache@0fd33ad7d7b5a4d138b93e32abdd31fd6b6de3b5
+        with:
+          version-file: .tool-versions
+      - run: just deps
+      - run: just test-generated

@@ -35,6 +35,9 @@ Victoria uses asdf 0.16.5 and the exact tool versions declared in `.tool-version
 toolchain with `just setup`, verify the active tools with `just doctor`, and fetch project dependencies with
 `just deps`. Run the ordinary test suite with `just test` or the full quality gate with `just check`.
 
+CI uses pinned, purpose-built setup actions that read the same `.tool-versions` file. Local tool installation
+remains owned by asdf through `just setup`.
+
 Use `just --list` to see the focused documentation, package, consumer, and real-Apalache checks used by CI.
 
 ## Model callback contract
