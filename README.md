@@ -6,7 +6,7 @@ behavior.
 
 ## Status
 
-Victoria 0.1.0 is experimental. The two core workflows are usable, but public APIs may change during the
+Victoria 0.2.0 is experimental. The two core workflows are usable, but public APIs may change during the
 `0.x` series and Apalache compatibility is intentionally narrow.
 
 ## Installation
@@ -16,7 +16,7 @@ Add Victoria to `mix.exs`:
 ```elixir
 def deps do
   [
-    {:victoria, "~> 0.1.0"}
+    {:victoria, "~> 0.2.0"}
   ]
 end
 ```

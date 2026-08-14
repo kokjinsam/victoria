@@ -338,11 +338,13 @@ defmodule Victoria.WorkflowTest do
     {:ok, removed_spec} = Spec.new(source: source)
     File.rm!(source)
 
+    expected_reason = %Apalachex.Spec.Error{field: :source, path: source, reason: :not_found}
+
     assert {:error,
             %Error{
               phase: :apalache,
-              reason: %Apalachex.Spec.Error{field: :source, path: ^source, reason: :not_found}
-            }} =
+              reason: ^expected_reason
+            } = error} =
              with_runtime(["d4e5f6"], fn ->
                Workflow.run(CounterModel, removed_spec,
                  plan: valid_plan(),
@@ -350,6 +352,11 @@ defmodule Victoria.WorkflowTest do
                  artifacts: [root: Path.join(root, "removed-artifacts")]
                )
              end)
+
+    message = Exception.message(error)
+    assert message =~ "Victoria workflow could not validate the specification"
+    refute message =~ "failed during Apalache execution"
+    assert message =~ Exception.message(expected_reason)
   end
 
   test "revalidates the spec before each complete collision retry", %{root: root} do

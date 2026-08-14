@@ -80,6 +80,18 @@ defmodule Victoria.Workflow.Error do
     )
   end
 
+  def message(%__MODULE__{reason: %Apalachex.Spec.Error{}} = error) do
+    Enum.join(
+      [
+        "Victoria workflow could not validate the specification",
+        field("Model", inspect(error.model)),
+        field("Specification", error.spec.source),
+        field("Cause", render_reason(error.reason))
+      ],
+      "\n\n"
+    )
+  end
+
   def message(%__MODULE__{} = error) do
     Enum.join(
       [

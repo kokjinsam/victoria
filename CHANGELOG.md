@@ -4,6 +4,8 @@ All notable changes to Victoria will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-08-14
+
 ### Changed
 
 - Made the root Justfile the public development and CI command interface, with a repository-complete pinned
@@ -14,8 +16,8 @@ All notable changes to Victoria will be documented in this file.
 - Accepted standalone ITF rich value structs unchanged in replay states.
 - Adopted ITF's default input-size and nesting-depth limits, decoded metadata behavior, and upstream
   reason/path terminology where legacy decoder details cannot be reconstructed without decoding twice.
-- Replaced Victoria's duplicate Apalache executor with Apalachex 0.1.0 while preserving Victoria trace
-  decoding, verification, model lifecycle, result, workflow, and ExUnit contracts.
+- Replaced Victoria's duplicate Apalache executor with Apalachex 0.1.0 while preserving verification
+  semantics, model lifecycle, workflow sequencing, and ExUnit assertion behavior.
 - Made `apalachex-run.json` the sole execution and artifact manifest. Its `materialized` outcome records
   discovered ITF artifacts and remains valid if Victoria later rejects an ITF during decoding.
 - Preserved upstream Apalachex execution and specification errors intact in workflow failures.
@@ -54,8 +56,10 @@ Initial public release.
 - State comparison uses exact Elixir `===`.
 - Generated traces are verified sequentially.
 - Generated verification stops on the first failing trace.
+- ITF tagged-value support is intentionally partial.
 - Apalache run artifacts are retained automatically.
 - Public APIs may change during the `0.x` series.
 
-[Unreleased]: https://github.com/kokjinsam/victoria/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/kokjinsam/victoria/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kokjinsam/victoria/releases/tag/v0.2.0
 [0.1.0]: https://github.com/kokjinsam/victoria/releases/tag/v0.1.0

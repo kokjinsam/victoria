@@ -15,7 +15,7 @@
 - **Trace loading** — ordered, all-or-nothing decoding of every Apalachex ITF path by the standalone ITF
   package and semantic adaptation into Victoria traces for replay.
 - **Supported Apalache version** — the exact Apalache release validated by the current Victoria release;
-  Victoria 0.1.0 supports v0.58.3.
+  Victoria 0.2.0 supports v0.58.3.
 - **Run directory** — the location exclusively reserved by Apalachex for one operation; its artifacts survive
   successful and failed materialization.
 - **Run manifest** — the Apalachex-owned `apalachex-run.json` document recording the plan, execution context,
