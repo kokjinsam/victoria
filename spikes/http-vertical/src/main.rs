@@ -1,5 +1,6 @@
 use serde_json::{json, Map, Value};
-use std::{collections::HashMap, env, fs, process, time::Duration};
+use std::{collections::{HashMap, HashSet}, env, fs, process, time::Duration};
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
 fn read_arg(args: &[String], name: &str) -> Result<String, String> {
     args.windows(2)
@@ -76,6 +77,112 @@ fn check_simple_schema(schema: &Value, body: &Value) -> Result<(), String> {
     Ok(())
 }
 
+
+#[derive(Debug, Clone)]
+struct ResourceBinding {
+    concrete_id: String,
+    targets: HashSet<(String, String)>,
+}
+type Operations = HashMap<String, (String, String, Value)>;
+
+fn bind_from_openapi_links(
+    symbol: &str,
+    response_spec: &Value,
+    response_body: &Value,
+    operations: &Operations,
+    bindings: &mut HashMap<String, ResourceBinding>,
+) -> Result<(), String> {
+    if bindings.contains_key(symbol) {
+        return Err(format!("BINDING ERROR: symbol {symbol} already bound"));
+    }
+    let links = response_spec["links"].as_object()
+        .ok_or_else(|| format!("BINDING ERROR: response has no OpenAPI Links for {symbol}"))?;
+    let mut id: Option<String> = None;
+    let mut targets = HashSet::new();
+    for (link_name, link) in links {
+        let operation = link["operationId"].as_str()
+            .ok_or_else(|| format!("BINDING ERROR: link {link_name} lacks operationId"))?;
+        let (_, target_path, target_op) = operations.get(operation)
+            .ok_or_else(|| format!("BINDING ERROR: link targets unknown operation {operation}"))?;
+        let parameters = link["parameters"].as_object()
+            .ok_or_else(|| format!("BINDING ERROR: link {link_name} lacks parameters"))?;
+        for (param_name, expression) in parameters {
+            let name = param_name.strip_prefix("path.")
+                .ok_or_else(|| format!("BINDING ERROR: unsupported Link parameter {param_name}"))?;
+            let target = format!("{{{name}}}");
+            let declared = target_op["parameters"].as_array().is_some_and(|params| {
+                params.iter().any(|p| p["in"] == "path" && p["name"] == name)
+            });
+            if !target_path.contains(&target) || !declared {
+                return Err(format!("BINDING ERROR: {operation} has no declared path parameter {name}"));
+            }
+            let expr = expression.as_str()
+                .ok_or_else(|| format!("BINDING ERROR: non-string Link expression for {name}"))?;
+            let pointer = expr.strip_prefix("$response.body#")
+                .ok_or_else(|| format!("BINDING ERROR: unsupported runtime expression {expr}"))?;
+            if !pointer.starts_with('/') {
+                return Err(format!("BINDING ERROR: expected JSON pointer, got {expr}"));
+            }
+            let value = response_body.pointer(pointer)
+                .and_then(Value::as_str).filter(|s| !s.is_empty())
+                .ok_or_else(|| format!("BINDING ERROR: response cannot resolve {expr}"))?;
+            if let Some(previous) = &id {
+                if previous != value {
+                    return Err(format!("BINDING ERROR: conflicting Link values for {symbol}"));
+                }
+            } else {
+                id = Some(value.to_owned());
+            }
+            targets.insert((operation.to_owned(), name.to_owned()));
+        }
+    }
+    let concrete_id = id.ok_or_else(|| format!("BINDING ERROR: no resolvable Links for {symbol}"))?;
+    if targets.is_empty() {
+        return Err(format!("BINDING ERROR: no usable target operations for {symbol}"));
+    }
+    println!("BIND {symbol} using {} OpenAPI Link target(s)", targets.len());
+    bindings.insert(symbol.to_owned(), ResourceBinding { concrete_id, targets });
+    Ok(())
+}
+
+fn render_http_path(
+    path_template: &str,
+    operation: &str,
+    op: &Value,
+    state: &Value,
+    bindings: &HashMap<String, ResourceBinding>,
+) -> Result<String, String> {
+    if !path_template.contains('{') {
+        return Ok(path_template.to_owned());
+    }
+    let params = op["parameters"].as_array()
+        .ok_or_else(|| format!("BINDING ERROR: {operation} lacks path parameters"))?;
+    let symbol = state["resourceSymbol"].as_str()
+        .ok_or_else(|| format!("BINDING ERROR: missing resourceSymbol for {operation}"))?;
+    let binding = bindings.get(symbol)
+        .ok_or_else(|| format!("BINDING ERROR: unresolved symbolic identity {symbol}"))?;
+    let mut path = path_template.to_owned();
+    let mut seen = false;
+    for parameter in params.iter().filter(|p| p["in"] == "path") {
+        let name = parameter["name"].as_str()
+            .ok_or_else(|| "BINDING ERROR: path parameter has no name".to_owned())?;
+        if !binding.targets.contains(&(operation.to_owned(), name.to_owned())) {
+            return Err(format!("BINDING ERROR: {symbol} has no OpenAPI Link for {operation}.{name}"));
+        }
+        let target = format!("{{{name}}}");
+        if !path.contains(&target) {
+            return Err(format!("BINDING ERROR: template lacks declared parameter {name}"));
+        }
+        let encoded = utf8_percent_encode(&binding.concrete_id, NON_ALPHANUMERIC).to_string();
+        path = path.replace(&target, &encoded);
+        seen = true;
+    }
+    if !seen || path.contains('{') || path.contains('}') {
+        return Err(format!("BINDING ERROR: unresolved path template for {operation}"));
+    }
+    Ok(path)
+}
+
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
     let itf_path = read_arg(&args, "--trace")?;
@@ -118,6 +225,7 @@ fn run() -> Result<(), String> {
     if headers.len() != 1 { return Err("spike requires exactly one header API key scheme".into()); }
     let auth_header = headers[0];
     let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(10)).build();
+    let mut bindings: HashMap<String, ResourceBinding> = HashMap::new();
 
     for (index, raw_state) in states.iter().enumerate().skip(1) {
         let state = decode_itf(raw_state)?;
@@ -126,10 +234,8 @@ fn run() -> Result<(), String> {
         let status_expected = state["expectedStatus"].as_u64().ok_or("missing expectedStatus")? as u16;
         let (method, path, op) = ops.get(op_id)
             .ok_or_else(|| format!("unknown OpenAPI operationId: {op_id}"))?;
-        if path.contains('{') {
-            return Err("path template binding deliberately not implemented in first spike".into());
-        }
-        let url = format!("{}{}", base_url.trim_end_matches('/'), path);
+        let concrete_path = render_http_path(path, op_id, op, &state, &bindings)?;
+        let url = format!("{}{}", base_url.trim_end_matches('/'), concrete_path);
         let request = agent.request(method, &url).set(auth_header, actor);
         let result = if op.get("requestBody").is_some() {
             request.send_json(state["requestBody"].clone())
@@ -142,16 +248,24 @@ fn run() -> Result<(), String> {
         let status_actual = response.status();
         let content_type = response.header("Content-Type").unwrap_or("").to_owned();
         let body_str = response.into_string().map_err(|e| e.to_string())?;
-        let body: Value = serde_json::from_str(&body_str)
-            .map_err(|e| format!("invalid HTTP response JSON: {e}"))?;
+        let body: Value = if body_str.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_str(&body_str)
+                .map_err(|e| format!("invalid HTTP response JSON: {e}"))?
+        };
         let response_spec = op["responses"].get(status_actual.to_string())
             .ok_or_else(|| format!("OPENAPI FAILURE step {index}: undocumented status {status_actual}"))?;
-        if !content_type.starts_with("application/json") {
-            return Err(format!("OPENAPI FAILURE step {index}: unexpected content type {content_type}"));
+        if response_spec.get("content").is_some() {
+            if !content_type.starts_with("application/json") {
+                return Err(format!("OPENAPI FAILURE step {index}: unexpected content type {content_type}"));
+            }
+            let schema = &response_spec["content"]["application/json"]["schema"];
+            check_simple_schema(schema, &body)
+                .map_err(|e| format!("OPENAPI FAILURE step {index}: {e}"))?;
+        } else if body != Value::Null {
+            return Err(format!("OPENAPI FAILURE step {index}: unexpected response body"));
         }
-        let schema = &response_spec["content"]["application/json"]["schema"];
-        check_simple_schema(schema, &body)
-            .map_err(|e| format!("OPENAPI FAILURE step {index}: {e}"))?;
         if status_actual != status_expected {
             return Err(format!("CONFORMANCE FAIL step {index} {op_id}: expected status {status_expected}, got {status_actual}"));
         }
@@ -159,6 +273,20 @@ fn run() -> Result<(), String> {
             && !projected_matches(&state["expectedBody"], &body) {
                 return Err(format!("CONFORMANCE FAIL step {index} {op_id}: expected projected {}, observed {}",
                     state["expectedBody"], body));
+        }
+        if state["checkIdentity"] == true {
+            let symbol = state["resourceSymbol"].as_str()
+                .ok_or("BINDING ERROR: missing resourceSymbol for identity check")?;
+            let binding = bindings.get(symbol)
+                .ok_or_else(|| format!("BINDING ERROR: unresolved symbol {symbol}"))?;
+            if body["id"].as_str() != Some(binding.concrete_id.as_str()) {
+                return Err(format!("CONFORMANCE FAIL step {index} {op_id}: wrong resource identity for {symbol}"));
+            }
+        }
+        if state["bindResource"] == true {
+            let symbol = state["resourceSymbol"].as_str()
+                .ok_or("BINDING ERROR: missing resourceSymbol for creation")?;
+            bind_from_openapi_links(symbol, response_spec, &body, &ops, &mut bindings)?;
         }
         println!("PASS step {index}: {op_id} status={status_actual} observed={}", state["checkBody"]);
     }
@@ -176,6 +304,44 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn captures_link_and_restricts_to_declared_target() {
+        let mut operations = HashMap::new();
+        let get = json!({"parameters": [{"name":"project_id","in":"path","required":true}]});
+        operations.insert("getProject".into(), ("GET".into(), "/projects/{project_id}".into(), get));
+        let response_spec = json!({"links":{"project":{
+            "operationId":"getProject",
+            "parameters":{"path.project_id":"$response.body#/id"}
+        }}});
+        let mut bindings = HashMap::new();
+        bind_from_openapi_links("projectA", &response_spec, &json!({"id":"uuid-1"}),
+            &operations, &mut bindings).unwrap();
+        let state = json!({"resourceSymbol":"projectA"});
+        let (method, template, op) = operations.get("getProject").unwrap();
+        assert_eq!(method, "GET");
+        assert_eq!(render_http_path(template, "getProject", op, &state, &bindings).unwrap(),
+            "/projects/uuid%2D1");
+        assert!(render_http_path(template, "deleteProject", op, &state, &bindings).is_err());
+    }
+
+    #[test]
+    fn missing_link_pointer_is_not_a_conformance_failure() {
+        let mut operations = HashMap::new();
+        operations.insert("getProject".into(), ("GET".into(),
+            "/projects/{project_id}".into(),
+            json!({"parameters":[{"in":"path","name":"project_id"}]})));
+        let bad = json!({"links":{"project":{
+            "operationId":"getProject",
+            "parameters":{"path.project_id":"$response.body#/absent"}
+        }}});
+        let mut bindings = HashMap::new();
+        let err = bind_from_openapi_links("projectA", &bad, &json!({"id":"uuid-1"}),
+            &operations, &mut bindings).unwrap_err();
+        assert!(err.starts_with("BINDING ERROR:"), "{err}");
+        assert!(bindings.is_empty());
+    }
+
     #[test]
     fn decodes_itf_bigint() {
         assert_eq!(decode_itf(&json!({"#bigint":"403"})).unwrap(), json!(403));
