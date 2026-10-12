@@ -18,6 +18,7 @@ fn decode_itf(v: &Value) -> Result<Value, String> {
         Value::Object(m) => {
             let mut out = Map::new();
             for (k, v) in m {
+                if k == "#meta" { continue; }
                 if k.starts_with('#') {
                     return Err(format!("unsupported ITF value in spike: {k}"));
                 }
