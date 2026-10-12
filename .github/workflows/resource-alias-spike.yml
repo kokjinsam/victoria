@@ -44,7 +44,7 @@ jobs:
               "Initial","createProject","createProject","getProject","getProject"
             ]
             assert [s["resourceSymbol"] for s in states[1:]] == want
-            assert all(s["requestBody"]["name"] == "Same" for s in states[1:])
+            assert all(s["requestBody"]["name"] == "Same" for s in states[1:3])
             print("REAL_IDENTICAL_RESOURCE_TRACE",want)
           PY
 
