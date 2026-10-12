@@ -1,0 +1,81 @@
+name: Victoria HTTP vertical spike
+
+on:
+  pull_request:
+    paths:
+      - 'spikes/http-vertical/**'
+      - '.github/workflows/http-vertical-spike.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version-file: .tool-versions
+      - uses: kokjinsam/setup-apalache@0fd33ad7d7b5a4d138b93e32abdd31fd6b6de3b5
+        with:
+          version-file: .tool-versions
+      - name: Generate genuine Apalache ITF and run compiled Rust verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --version
+          cargo --version
+          mkdir -p /tmp/victoria-spike
+          apalache-mc --run-dir=/tmp/victoria-spike simulate --init=Init --next=Next --no-deadlock --length=3 --max-run=1 --output-traces=true spikes/http-vertical/WorkspaceHTTP.tla
+          find /tmp/victoria-spike -type f | sort
+          ITF="$(find /tmp/victoria-spike -name '*.itf.json' -print -quit)"
+          test -n "$ITF"
+          echo "ITF=$ITF"
+          python3 - "$ITF" <<'PY'
+          import json,sys
+          trace=json.load(open(sys.argv[1]))
+          print("GENERATED_STATES",len(trace["states"]))
+          print("GENERATED_OPERATIONS",[s["operationId"] for s in trace["states"]])
+          assert len(trace["states"])==4, "expected 3 actions plus Init"
+          assert [s["operationId"] for s in trace["states"]] == ["Initial","deactivateMember","createProject","listProjects"]
+          PY
+          echo "=== OPTIONAL tracee proof ==="
+          mkdir -p /tmp/victoria-tracee
+          if apalache-mc --run-dir=/tmp/victoria-tracee tracee "$ITF" "VisibleCount,VisibleHTTPView" spikes/http-vertical/WorkspaceHTTP.tla; then
+            echo "TRACEE_COMMAND_PASS"
+            find /tmp/victoria-tracee -name '*.itf.json' -print
+            PROJECTION="$(find /tmp/victoria-tracee -name '*.itf.json' -print -quit)"
+            test -n "$PROJECTION"
+            python3 - "$PROJECTION" <<'PY'
+          import json, sys
+          data=json.load(open(sys.argv[1]))
+          print("TRACEE_VARS", data["vars"])
+          print("TRACEE_STATES", len(data["states"]))
+          assert len(data["states"]) == 4
+          assert "VisibleCount" in data["vars"]
+          assert "VisibleHTTPView" in data["vars"]
+          PY
+          else
+            echo "TRACEE_COMMAND_FAILED (Apalache 0.58.3 integration unresolved)"
+          fi
+          cargo test --manifest-path spikes/http-vertical/Cargo.toml
+          cargo build --manifest-path spikes/http-vertical/Cargo.toml
+          CLI=spikes/http-vertical/target/debug/victoria-http-spike
+          python3 spikes/http-vertical/server.py --port 8123 &
+          SERVER=$!
+          trap 'kill "$SERVER" 2>/dev/null || true' EXIT
+          sleep 1
+          "$CLI" --trace "$ITF" --openapi spikes/http-vertical/openapi.yaml --url http://127.0.0.1:8123
+          kill "$SERVER"; wait "$SERVER" || true
+          python3 spikes/http-vertical/server.py --port 8123 --fault &
+          SERVER=$!
+          sleep 1
+          if "$CLI" --trace "$ITF" --openapi spikes/http-vertical/openapi.yaml --url http://127.0.0.1:8123 > /tmp/victoria-fault.log 2>&1; then
+            echo "ERROR: deliberate hidden mutation escaped detection"; exit 1
+          fi
+          cat /tmp/victoria-fault.log
+          grep -q "CONFORMANCE FAIL.*listProjects" /tmp/victoria-fault.log
+          echo "VERTICAL_SPIKE_PASS: correct SUT passed; hidden-mutation defect detected"

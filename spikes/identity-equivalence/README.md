@@ -1,0 +1,3 @@
+# Formal identity equivalence spike
+
+Real Apalache ITF describes either two aliases of one resource (same identityDomain and identityKey) or two distinct resources (different keys in one domain). Two different OpenAPI operations use disjoint Link targets to read them. The HTTP server returns identical names in all cases and can return matching or distinct IDs. The workflow demonstrates that the previous verifier falsely passed both defects, whereas the new verifier detects them immediately at the second binding and passes correct cases. The metadata is provisional, not a finalized Victoria trace protocol. The server uses an insecure test-only actor header.

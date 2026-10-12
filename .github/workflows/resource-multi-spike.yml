@@ -1,0 +1,101 @@
+name: Victoria multi-resource binding experiment
+
+on:
+  pull_request:
+    paths:
+      - 'spikes/resource-multi/**'
+      - 'spikes/resource-lifecycle/**'
+      - 'spikes/http-vertical/**'
+      - '.github/workflows/resource-multi-spike.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  multi-resource:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version-file: .tool-versions
+      - uses: kokjinsam/setup-apalache@0fd33ad7d7b5a4d138b93e32abdd31fd6b6de3b5
+        with:
+          version-file: .tool-versions
+      - name: Generate two orders, execute positive and faulted HTTP scenarios
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/victoria-resource-multi"
+          mkdir -p "$ROOT"/{Alpha,Beta,fixtures,logs}
+          for order in Alpha Beta; do
+            apalache-mc --run-dir="$ROOT/$order" simulate --init="Init$order" --next=Next --length=7 --max-run=1 --no-deadlock --output-traces=true spikes/resource-multi/MultiResource.tla
+          done
+          ALPHA="$(find "$ROOT/Alpha" -name '*.itf.json' -print -quit)"
+          BETA="$(find "$ROOT/Beta" -name '*.itf.json' -print -quit)"
+          test -n "$ALPHA" && test -n "$BETA"
+          python3 - "$ALPHA" "$BETA" <<'PY'
+          import json, sys
+          want_ops = ["Initial","createProject","createProject","getProject",
+                      "getProject","deleteProject","getProject","getProject"]
+          for filename, want_syms in [
+             (sys.argv[1],["projectA","projectB","projectB","projectA","projectA","projectB","projectA"]),
+             (sys.argv[2],["projectB","projectA","projectA","projectB","projectB","projectA","projectB"])
+          ]:
+            trace=json.load(open(filename))
+            steps=trace["states"]
+            operations=[s["operationId"] for s in steps]
+            syms=[s["resourceSymbol"] for s in steps[1:]]
+            assert len(steps)==8, (filename, len(steps))
+            assert operations==want_ops, (filename, operations)
+            assert syms==want_syms, (filename, syms)
+            print("GENUINE_ORDER_TRACE",filename,syms)
+          PY
+
+          cargo test --manifest-path spikes/http-vertical/Cargo.toml
+          cargo build --manifest-path spikes/http-vertical/Cargo.toml
+          CLI=spikes/http-vertical/target/debug/victoria-http-spike
+          API=spikes/resource-lifecycle/openapi.yaml
+          python3 spikes/resource-multi/make_negative_specs.py "$API" "$ROOT/fixtures"
+
+          run_case() {
+            local label="$1" itf="$2" port="$3" fault="$4" openapi="$5" expectation="$6"
+            python3 spikes/resource-multi/server.py --port "$port" --fault "$fault" &
+            local server=$!
+            sleep 1
+            local output="$ROOT/logs/$label.log"
+            if [[ "$expectation" == "PASS" ]]; then
+              if ! "$CLI" --trace "$itf" --openapi "$openapi" --url "http://127.0.0.1:$port" > "$output" 2>&1; then
+                cat "$output"
+                kill "$server" 2>/dev/null || true
+                wait "$server" || true
+                echo "EXPECTED_PASS_FAILED: $label"
+                exit 1
+              fi
+              grep -F "PASS: 7 trace transitions conformed" "$output"
+              test "$(grep -c '^BIND ' "$output")" = 2
+            else
+              if "$CLI" --trace "$itf" --openapi "$openapi" --url "http://127.0.0.1:$port" > "$output" 2>&1; then
+                cat "$output"
+                kill "$server" 2>/dev/null || true
+                wait "$server" || true
+                echo "EXPECTED_FAILURE_ESCAPED: $label"
+                exit 1
+              fi
+              grep -F "$expectation" "$output"
+            fi
+            kill "$server" 2>/dev/null || true
+            wait "$server" || true
+            echo "CASE_VERIFIED: $label"
+          }
+
+          run_case alpha-first "$ALPHA" 8125 none "$API" PASS
+          run_case beta-first "$BETA" 8126 none "$API" PASS
+          run_case cross-identity "$ALPHA" 8127 cross-id "$API" "CONFORMANCE FAIL step 3 getProject: wrong resource identity for projectB"
+          run_case wrong-deletion "$BETA" 8128 delete-other "$API" "CONFORMANCE FAIL step 6 getProject: expected status 200, got 404"
+          run_case alias-created "$ALPHA" 8129 alias-create "$API" "CONFORMANCE FAIL: distinct formal resources projectA and projectB share a concrete identity"
+          run_case missing-links "$ALPHA" 8130 none "$ROOT/fixtures/without-links.yaml" "BINDING ERROR: response has no OpenAPI Links for projectA"
+          run_case conflicting-links "$ALPHA" 8131 none "$ROOT/fixtures/conflicting-links.yaml" "BINDING ERROR: conflicting Link values for projectA"
+          echo "MULTI_RESOURCE_EXPERIMENT_PASS"

@@ -1,0 +1,64 @@
+name: Apalache tracee minimal probe
+
+on:
+  pull_request:
+    paths:
+      - 'spikes/tracee-minimal/**'
+      - '.github/workflows/tracee-minimal-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  tracee-minimal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version-file: .tool-versions
+      - uses: kokjinsam/setup-apalache@0fd33ad7d7b5a4d138b93e32abdd31fd6b6de3b5
+        with:
+          version-file: .tool-versions
+      - name: Isolated projection vs embedded trace experiment
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/victoria-tracee-minimal"
+          mkdir -p "$ROOT"/{pure,embedded,tracee-documented,tracee-positional}
+          apalache-mc --run-dir="$ROOT/pure" simulate --init=Init --next=Next --length=2 --max-run=1 --no-deadlock --output-traces=true spikes/tracee-minimal/TraceeMinimal.tla
+          PURE="$(find "$ROOT/pure" -type f -name '*.itf.json' -print -quit)"
+          test -n "$PURE"
+          apalache-mc --run-dir="$ROOT/embedded" simulate --init=Init --next=Next --length=2 --max-run=1 --no-deadlock --output-traces=true spikes/tracee-minimal/EmbeddedMinimal.tla
+          EMBEDDED="$(find "$ROOT/embedded" -type f -name '*.itf.json' -print -quit)"
+          test -n "$EMBEDDED"
+          python3 spikes/tracee-minimal/check_embedded.py "$PURE" "$EMBEDDED"
+
+          echo "=== DOCUMENTED TRACEE INVOCATION ==="
+          if apalache-mc --run-dir="$ROOT/tracee-documented" tracee --trace="$PURE" --expressions=Double spikes/tracee-minimal/TraceeMinimal.tla > "$ROOT/tracee-documented.log" 2>&1; then
+            cat "$ROOT/tracee-documented.log"
+            OUT="$(find "$ROOT/tracee-documented" -type f -name '*.itf.json' -print -quit)"
+            test -n "$OUT"
+            python3 spikes/tracee-minimal/check_projection.py "$OUT"
+            echo "TRACEE_DOCUMENTED_WORKS"
+          else
+            cat "$ROOT/tracee-documented.log"
+            grep -F "Tried to load state from an invalid source" "$ROOT/tracee-documented.log"
+            echo "TRACEE_DOCUMENTED_BUG_REPRODUCED"
+          fi
+
+          echo "=== POSITIONAL ALTERNATIVE ==="
+          if apalache-mc --run-dir="$ROOT/tracee-positional" tracee "$PURE" Double spikes/tracee-minimal/TraceeMinimal.tla > "$ROOT/tracee-positional.log" 2>&1; then
+            cat "$ROOT/tracee-positional.log"
+            OUT="$(find "$ROOT/tracee-positional" -type f -name '*.itf.json' -print -quit)"
+            test -n "$OUT"
+            python3 spikes/tracee-minimal/check_projection.py "$OUT"
+            echo "TRACEE_POSITIONAL_WORKS"
+          else
+            cat "$ROOT/tracee-positional.log"
+            grep -F "Unsupported file format" "$ROOT/tracee-positional.log"
+            echo "TRACEE_POSITIONAL_BUG_REPRODUCED"
+          fi
+          echo "MINIMAL_PROBE_COMPLETED: direct ITF expectations verified; tracee classified independently"

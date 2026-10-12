@@ -1,0 +1,61 @@
+name: Victoria symbolic resource lifecycle spike
+
+on:
+  pull_request:
+    paths:
+      - 'spikes/resource-lifecycle/**'
+      - 'spikes/http-vertical/**'
+      - '.github/workflows/resource-lifecycle-spike.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version-file: .tool-versions
+      - uses: kokjinsam/setup-apalache@0fd33ad7d7b5a4d138b93e32abdd31fd6b6de3b5
+        with:
+          version-file: .tool-versions
+      - name: Generate ITF, run Rust and verify deletion defect
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/victoria-resource-lifecycle"
+          mkdir -p "$ROOT/trace"
+          apalache-mc --run-dir="$ROOT/trace" simulate --init=Init --next=Next --length=4 --max-run=1 --no-deadlock --output-traces=true spikes/resource-lifecycle/ResourceLifecycle.tla
+          ITF="$(find "$ROOT/trace" -name '*.itf.json' -print -quit)"
+          test -n "$ITF"
+          python3 - "$ITF" <<'PY'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          ops=[s["operationId"] for s in data["states"]]
+          assert ops==["Initial","createProject","getProject","deleteProject","getProject"], ops
+          print("REAL_ITF_SEQUENCE",ops)
+          PY
+          cargo test --manifest-path spikes/http-vertical/Cargo.toml
+          cargo build --manifest-path spikes/http-vertical/Cargo.toml
+          CLI=spikes/http-vertical/target/debug/victoria-http-spike
+          python3 spikes/resource-lifecycle/server.py --port 8124 &
+          SERVER=$!
+          trap 'kill "$SERVER" 2>/dev/null || true' EXIT
+          sleep 1
+          "$CLI" --trace "$ITF" --openapi spikes/resource-lifecycle/openapi.yaml --url http://127.0.0.1:8124 | tee "$ROOT/correct.log"
+          grep -F "BIND projectA using 2 OpenAPI Link target(s)" "$ROOT/correct.log"
+          grep -F "PASS: 4 trace transitions conformed" "$ROOT/correct.log"
+          kill "$SERVER"; wait "$SERVER" || true
+          python3 spikes/resource-lifecycle/server.py --port 8124 --fault &
+          SERVER=$!
+          sleep 1
+          if "$CLI" --trace "$ITF" --openapi spikes/resource-lifecycle/openapi.yaml --url http://127.0.0.1:8124 > "$ROOT/fault.log" 2>&1; then
+            echo "ERROR: deliberate deletion defect went undetected"; exit 1
+          fi
+          cat "$ROOT/fault.log"
+          grep -F "CONFORMANCE FAIL step 4 getProject: expected status 404, got 200" "$ROOT/fault.log"
+          echo "RESOURCE_LIFECYCLE_SPIKE_PASS"
