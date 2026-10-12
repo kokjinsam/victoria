@@ -82,6 +82,7 @@ fn check_simple_schema(schema: &Value, body: &Value) -> Result<(), String> {
 struct ResourceBinding {
     concrete_id: String,
     targets: HashSet<(String, String)>,
+    formal_identity: Option<(String, String)>,
 }
 type Operations = HashMap<String, (String, String, Value)>;
 
@@ -91,6 +92,17 @@ fn bind_from_openapi_links(
     response_body: &Value,
     operations: &Operations,
     bindings: &mut HashMap<String, ResourceBinding>,
+) -> Result<(), String> {
+    bind_with_formal_identity(symbol, response_spec, response_body, operations, bindings, None)
+}
+
+fn bind_with_formal_identity(
+    symbol: &str,
+    response_spec: &Value,
+    response_body: &Value,
+    operations: &Operations,
+    bindings: &mut HashMap<String, ResourceBinding>,
+    formal_identity: Option<(&str, &str)>,
 ) -> Result<(), String> {
     if bindings.contains_key(symbol) {
         return Err(format!("BINDING ERROR: symbol {symbol} already bound"));
@@ -140,20 +152,42 @@ fn bind_from_openapi_links(
     if targets.is_empty() {
         return Err(format!("BINDING ERROR: no usable target operations for {symbol}"));
     }
-    // Two distinct formal resources cannot resolve to the same concrete identity
-    // when their OpenAPI Links address the same operation and path parameter.
-    // Different resource namespaces may legitimately use the same ID string.
+    // The formal model, when supplied, decides whether symbols refer to the
+    // same logical entity. OpenAPI Links continue to define only HTTP bindings.
+    // Legacy traces without a formal identity retain the narrow overlap rule.
     for (other_symbol, other_binding) in bindings.iter() {
-        if other_binding.concrete_id == concrete_id
-            && !other_binding.targets.is_disjoint(&targets)
-        {
-            return Err(format!(
-                "CONFORMANCE FAIL: distinct formal resources {other_symbol} and {symbol} share a concrete identity in the same OpenAPI namespace"
-            ));
+        match (formal_identity, other_binding.formal_identity.as_ref()) {
+            (Some((domain, key)), Some((other_domain, other_key))) => {
+                if domain == other_domain {
+                    if key == other_key && concrete_id != other_binding.concrete_id {
+                        return Err(format!(
+                            "CONFORMANCE FAIL: formal aliases {other_symbol} and {symbol} resolve to different concrete IDs"
+                        ));
+                    }
+                    if key != other_key && concrete_id == other_binding.concrete_id {
+                        return Err(format!(
+                            "CONFORMANCE FAIL: distinct formal resources {other_symbol} and {symbol} share a concrete identity in domain {domain}"
+                        ));
+                    }
+                }
+            }
+            _ => {
+                if other_binding.concrete_id == concrete_id
+                    && !other_binding.targets.is_disjoint(&targets)
+                {
+                    return Err(format!(
+                        "CONFORMANCE FAIL: distinct formal resources {other_symbol} and {symbol} share a concrete identity in the same OpenAPI namespace"
+                    ));
+                }
+            }
         }
     }
     println!("BIND {symbol} using {} OpenAPI Link target(s)", targets.len());
-    bindings.insert(symbol.to_owned(), ResourceBinding { concrete_id, targets });
+    bindings.insert(symbol.to_owned(), ResourceBinding {
+        concrete_id,
+        targets,
+        formal_identity: formal_identity.map(|(domain, key)| (domain.into(), key.into())),
+    });
     Ok(())
 }
 
@@ -298,7 +332,21 @@ fn run() -> Result<(), String> {
         if state["bindResource"] == true {
             let symbol = state["resourceSymbol"].as_str()
                 .ok_or("BINDING ERROR: missing resourceSymbol for creation")?;
-            bind_from_openapi_links(symbol, response_spec, &body, &ops, &mut bindings)?;
+            let formal_identity = match (
+                state["identityDomain"].as_str(),
+                state["identityKey"].as_str(),
+            ) {
+                (None, None) => None,
+                (Some(domain), Some(key)) if !domain.is_empty() && !key.is_empty() => {
+                    Some((domain, key))
+                }
+                _ => return Err(
+                    "BINDING ERROR: identityDomain and identityKey must both be nonempty or both absent".into()
+                ),
+            };
+            bind_with_formal_identity(
+                symbol, response_spec, &body, &ops, &mut bindings, formal_identity
+            )?;
         }
         println!("PASS step {index}: {op_id} status={status_actual} observed={}", state["checkBody"]);
     }
@@ -403,6 +451,95 @@ mod tests {
             &ops, &mut bindings).unwrap();
         bind_from_openapi_links("projectB", &link, &json!({"id":"2"}),
             &ops, &mut bindings).unwrap();
+        assert_eq!(bindings.len(), 2);
+    }
+
+
+    #[test]
+    fn intentional_aliases_can_share_concrete_identity_even_with_overlapping_links() {
+        let mut ops = HashMap::new();
+        ops.insert("getProject".into(), ("GET".into(), "/projects/{project_id}".into(),
+            json!({"parameters":[{"in":"path","name":"project_id"}]})));
+        let link = json!({"links":{"resource":{"operationId":"getProject",
+            "parameters":{"path.project_id":"$response.body#/id"}}}});
+        let mut bindings = HashMap::new();
+        bind_with_formal_identity("primary", &link, &json!({"id":"p1"}),
+            &ops, &mut bindings, Some(("projects","entityA"))).unwrap();
+        bind_with_formal_identity("alias", &link, &json!({"id":"p1"}),
+            &ops, &mut bindings, Some(("projects","entityA"))).unwrap();
+        assert_eq!(bindings.len(), 2);
+    }
+
+    #[test]
+    fn aliases_require_equal_ids_across_disjoint_http_links() {
+        let mut ops = HashMap::new();
+        ops.insert("getProject".into(), ("GET".into(), "/projects/{project_id}".into(),
+            json!({"parameters":[{"in":"path","name":"project_id"}]})));
+        ops.insert("getAlternate".into(), ("GET".into(), "/projects/alternate/{alternate_id}".into(),
+            json!({"parameters":[{"in":"path","name":"alternate_id"}]})));
+        let primary = json!({"links":{"resource":{"operationId":"getProject",
+            "parameters":{"path.project_id":"$response.body#/id"}}}});
+        let alternate = json!({"links":{"resource":{"operationId":"getAlternate",
+            "parameters":{"path.alternate_id":"$response.body#/id"}}}});
+        let mut bindings = HashMap::new();
+        bind_with_formal_identity("primary", &primary, &json!({"id":"p1"}),
+            &ops, &mut bindings, Some(("projects","entityA"))).unwrap();
+        let err = bind_with_formal_identity("alias", &alternate, &json!({"id":"p2"}),
+            &ops, &mut bindings, Some(("projects","entityA"))).unwrap_err();
+        assert!(err.contains("formal aliases") && err.contains("different concrete IDs"), "{err}");
+        assert_eq!(bindings.len(), 1);
+    }
+
+    #[test]
+    fn distinct_entities_require_distinct_ids_even_across_disjoint_operations() {
+        let mut ops = HashMap::new();
+        ops.insert("getProject".into(), ("GET".into(), "/projects/{project_id}".into(),
+            json!({"parameters":[{"in":"path","name":"project_id"}]})));
+        ops.insert("getAlternate".into(), ("GET".into(), "/projects/alternate/{alternate_id}".into(),
+            json!({"parameters":[{"in":"path","name":"alternate_id"}]})));
+        let primary = json!({"links":{"resource":{"operationId":"getProject",
+            "parameters":{"path.project_id":"$response.body#/id"}}}});
+        let alternate = json!({"links":{"resource":{"operationId":"getAlternate",
+            "parameters":{"path.alternate_id":"$response.body#/id"}}}});
+        let mut bindings = HashMap::new();
+        bind_with_formal_identity("first", &primary, &json!({"id":"p1"}),
+            &ops, &mut bindings, Some(("projects","entityA"))).unwrap();
+        let err = bind_with_formal_identity("second", &alternate, &json!({"id":"p1"}),
+            &ops, &mut bindings, Some(("projects","entityB"))).unwrap_err();
+        assert!(err.contains("distinct formal resources") && err.contains("domain projects"), "{err}");
+    }
+
+    #[test]
+    fn unrelated_identity_domains_may_reuse_strings_even_with_shared_targets() {
+        let mut ops = HashMap::new();
+        ops.insert("getEntity".into(), ("GET".into(), "/entities/{entity_id}".into(),
+            json!({"parameters":[{"in":"path","name":"entity_id"}]})));
+        let link = json!({"links":{"resource":{"operationId":"getEntity",
+            "parameters":{"path.entity_id":"$response.body#/id"}}}});
+        let mut bindings = HashMap::new();
+        bind_with_formal_identity("project", &link, &json!({"id":"42"}),
+            &ops, &mut bindings, Some(("projects","projectA"))).unwrap();
+        bind_with_formal_identity("user", &link, &json!({"id":"42"}),
+            &ops, &mut bindings, Some(("users","userA"))).unwrap();
+        assert_eq!(bindings.len(), 2);
+    }
+
+    #[test]
+    fn same_formal_entity_can_be_bound_through_multiple_http_operations() {
+        let mut ops = HashMap::new();
+        ops.insert("getPrimary".into(), ("GET".into(), "/projects/{project_id}".into(),
+            json!({"parameters":[{"in":"path","name":"project_id"}]})));
+        ops.insert("getAlternate".into(), ("GET".into(), "/projects/alternate/{alt_id}".into(),
+            json!({"parameters":[{"in":"path","name":"alt_id"}]})));
+        let first = json!({"links":{"resource":{"operationId":"getPrimary",
+            "parameters":{"path.project_id":"$response.body#/id"}}}});
+        let second = json!({"links":{"resource":{"operationId":"getAlternate",
+            "parameters":{"path.alt_id":"$response.body#/id"}}}});
+        let mut bindings = HashMap::new();
+        bind_with_formal_identity("first", &first, &json!({"id":"p1"}),
+            &ops, &mut bindings, Some(("projects","entityA"))).unwrap();
+        bind_with_formal_identity("second", &second, &json!({"id":"p1"}),
+            &ops, &mut bindings, Some(("projects","entityA"))).unwrap();
         assert_eq!(bindings.len(), 2);
     }
 
