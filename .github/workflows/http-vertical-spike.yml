@@ -44,7 +44,7 @@ jobs:
           PY
           echo "=== OPTIONAL tracee proof ==="
           mkdir -p /tmp/victoria-tracee
-          if apalache-mc --run-dir=/tmp/victoria-tracee tracee --trace="$ITF" --expressions=VisibleCount,VisibleHTTPView spikes/http-vertical/WorkspaceHTTP.tla; then
+          if apalache-mc --run-dir=/tmp/victoria-tracee tracee "$ITF" "VisibleCount,VisibleHTTPView" spikes/http-vertical/WorkspaceHTTP.tla; then
             echo "TRACEE_COMMAND_PASS"
             find /tmp/victoria-tracee -name '*.itf.json' -print
             PROJECTION="$(find /tmp/victoria-tracee -name '*.itf.json' -print -quit)"
