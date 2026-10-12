@@ -95,7 +95,7 @@ jobs:
           run_case beta-first "$BETA" 8126 none "$API" PASS
           run_case cross-identity "$ALPHA" 8127 cross-id "$API" "CONFORMANCE FAIL step 3 getProject: wrong resource identity for projectB"
           run_case wrong-deletion "$BETA" 8128 delete-other "$API" "CONFORMANCE FAIL step 6 getProject: expected status 200, got 404"
-          run_case alias-created "$ALPHA" 8129 alias-create "$API" "CONFORMANCE FAIL step 4 getProject: expected projected"
+          run_case alias-created "$ALPHA" 8129 alias-create "$API" "CONFORMANCE FAIL: distinct formal resources projectA and projectB share a concrete identity"
           run_case missing-links "$ALPHA" 8130 none "$ROOT/fixtures/without-links.yaml" "BINDING ERROR: response has no OpenAPI Links for projectA"
           run_case conflicting-links "$ALPHA" 8131 none "$ROOT/fixtures/conflicting-links.yaml" "BINDING ERROR: conflicting Link values for projectA"
           echo "MULTI_RESOURCE_EXPERIMENT_PASS"
