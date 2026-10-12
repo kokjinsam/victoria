@@ -11,11 +11,11 @@ VARIABLES
   operationId,
   \* @type: Str;
   actor,
-  \* @type: [name: Str];
+  \* @type: {name: Str};
   requestBody,
   \* @type: Int;
   expectedStatus,
-  \* @type: [count: Int];
+  \* @type: {count: Int};
   expectedBody,
   \* @type: Bool;
   checkBody
@@ -71,5 +71,6 @@ Observe ==
 
 Next == Deactivate \/ RejectCreate \/ Observe
 VisibleCount == projectCount
+VisibleHTTPView == [active |-> memberActive, count |-> projectCount]
 Spec == Init /\ [][Next]_vars
 =============================================================================
