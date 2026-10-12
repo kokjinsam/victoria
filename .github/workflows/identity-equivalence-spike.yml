@@ -1,0 +1,85 @@
+name: Victoria identity equivalence experiment
+on:
+  pull_request:
+    paths:
+      - 'spikes/identity-equivalence/**'
+      - 'spikes/http-vertical/**'
+      - '.github/workflows/identity-equivalence-spike.yml'
+permissions:
+  contents: read
+jobs:
+  experiment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version-file: .tool-versions
+      - uses: kokjinsam/setup-apalache@0fd33ad7d7b5a4d138b93e32abdd31fd6b6de3b5
+        with:
+          version-file: .tool-versions
+      - name: Verify formal alias and distinct identity behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/identity-equivalence"
+          mkdir -p "$ROOT"/{Alias,Distinct,baseline/src,logs}
+          for mode in Alias Distinct; do
+            apalache-mc --run-dir="$ROOT/$mode" simulate --init="Init$mode" --next=Next --length=4 --max-run=1 --no-deadlock --output-traces=true spikes/identity-equivalence/IdentityEquivalence.tla
+          done
+          ALIAS="$(find "$ROOT/Alias" -name '*.itf.json' -print -quit)"
+          DISTINCT="$(find "$ROOT/Distinct" -name '*.itf.json' -print -quit)"
+          test -n "$ALIAS" && test -n "$DISTINCT"
+          python3 - "$ALIAS" "$DISTINCT" <<'PY'
+          import json,sys
+          ops=["Initial","createProject","createReference","getReference","getProject"]
+          for filename,keys in [(sys.argv[1],["entityA","entityA"]),(sys.argv[2],["entityA","entityB"])]:
+            states=json.load(open(filename))["states"]
+            assert [s["operationId"] for s in states]==ops
+            assert [s["identityKey"] for s in states[1:3]]==keys
+            print("REAL_FORMAL_TRACE",keys)
+          PY
+          cargo test --manifest-path spikes/http-vertical/Cargo.toml
+          cargo build --manifest-path spikes/http-vertical/Cargo.toml
+          NEW=spikes/http-vertical/target/debug/victoria-http-spike
+          git fetch --no-tags --depth=1 origin b4bc9c0ad51caa106ee30f0d17130dcd200e1999
+          git show b4bc9c0ad51caa106ee30f0d17130dcd200e1999:spikes/http-vertical/src/main.rs > "$ROOT/baseline/src/main.rs"
+          git show b4bc9c0ad51caa106ee30f0d17130dcd200e1999:spikes/http-vertical/Cargo.toml > "$ROOT/baseline/Cargo.toml"
+          cargo build --manifest-path "$ROOT/baseline/Cargo.toml" --target-dir "$ROOT/baseline-target"
+          OLD="$ROOT/baseline-target/debug/victoria-http-spike"
+          API=spikes/identity-equivalence/openapi.yaml
+          run_case() {
+            local name="$1" trace="$2" port="$3" alternate="$4" cli="$5" expected="$6"
+            python3 spikes/identity-equivalence/server.py --port "$port" --alternate "$alternate" &
+            local server=$!
+            sleep 1
+            local log="$ROOT/logs/$name.log"
+            if [[ "$expected" == PASS ]]; then
+              if ! "$cli" --trace "$trace" --openapi "$API" --url "http://127.0.0.1:$port" > "$log" 2>&1; then
+                cat "$log"; kill "$server" 2>/dev/null || true; wait "$server" || true
+                echo "UNEXPECTED_FAILURE $name"; exit 1
+              fi
+              grep -F "PASS: 4 trace transitions conformed" "$log"
+            else
+              if "$cli" --trace "$trace" --openapi "$API" --url "http://127.0.0.1:$port" > "$log" 2>&1; then
+                cat "$log"; kill "$server" 2>/dev/null || true; wait "$server" || true
+                echo "DEFECT_ESCAPED $name"; exit 1
+              fi
+              grep -F "$expected" "$log"
+              if grep -F "PASS step 2:" "$log"; then
+                echo "DETECTED_TOO_LATE $name"; exit 1
+              fi
+            fi
+            kill "$server" 2>/dev/null || true
+            wait "$server" || true
+            echo "CASE_VERIFIED $name"
+          }
+          run_case old-alias-escaped "$ALIAS" 8140 different "$OLD" PASS
+          run_case old-distinct-escaped "$DISTINCT" 8141 same "$OLD" PASS
+          run_case new-alias-valid "$ALIAS" 8142 same "$NEW" PASS
+          run_case new-alias-invalid "$ALIAS" 8143 different "$NEW" "CONFORMANCE FAIL: formal aliases primary and alternate resolve to different concrete IDs"
+          run_case new-distinct-valid "$DISTINCT" 8144 different "$NEW" PASS
+          run_case new-distinct-invalid "$DISTINCT" 8145 same "$NEW" "CONFORMANCE FAIL: distinct formal resources primary and alternate share a concrete identity in domain projects"
+          echo "IDENTITY_EQUIVALENCE_EXPERIMENT_PASS"

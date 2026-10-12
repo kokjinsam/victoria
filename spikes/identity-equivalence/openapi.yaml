@@ -1,0 +1,89 @@
+openapi: 3.1.0
+info:
+  title: Identity equivalence spike
+  version: 0.0.1
+components:
+  securitySchemes:
+    actorHeader:
+      type: apiKey
+      in: header
+      name: X-Actor
+paths:
+  /projects:
+    post:
+      operationId: createProject
+      requestBody:
+        content:
+          application/json:
+            schema: {type: object}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name]
+                properties:
+                  id: {type: string}
+                  name: {type: string}
+          links:
+            resource:
+              operationId: getProject
+              parameters:
+                path.project_id: "$response.body#/id"
+  /references:
+    post:
+      operationId: createReference
+      requestBody:
+        content:
+          application/json:
+            schema: {type: object}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name]
+                properties:
+                  id: {type: string}
+                  name: {type: string}
+          links:
+            resource:
+              operationId: getReference
+              parameters:
+                path.reference_id: "$response.body#/id"
+  /projects/{project_id}:
+    get:
+      operationId: getProject
+      parameters:
+        - {name: project_id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Found
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name]
+                properties:
+                  id: {type: string}
+                  name: {type: string}
+  /references/{reference_id}:
+    get:
+      operationId: getReference
+      parameters:
+        - {name: reference_id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Found
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name]
+                properties:
+                  id: {type: string}
+                  name: {type: string}
