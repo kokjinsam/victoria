@@ -140,6 +140,18 @@ fn bind_from_openapi_links(
     if targets.is_empty() {
         return Err(format!("BINDING ERROR: no usable target operations for {symbol}"));
     }
+    // Two distinct formal resources cannot resolve to the same concrete identity
+    // when their OpenAPI Links address the same operation and path parameter.
+    // Different resource namespaces may legitimately use the same ID string.
+    for (other_symbol, other_binding) in bindings.iter() {
+        if other_binding.concrete_id == concrete_id
+            && !other_binding.targets.is_disjoint(&targets)
+        {
+            return Err(format!(
+                "CONFORMANCE FAIL: distinct formal resources {other_symbol} and {symbol} share a concrete identity in the same OpenAPI namespace"
+            ));
+        }
+    }
     println!("BIND {symbol} using {} OpenAPI Link target(s)", targets.len());
     bindings.insert(symbol.to_owned(), ResourceBinding { concrete_id, targets });
     Ok(())
@@ -340,6 +352,58 @@ mod tests {
             &operations, &mut bindings).unwrap_err();
         assert!(err.starts_with("BINDING ERROR:"), "{err}");
         assert!(bindings.is_empty());
+    }
+
+
+    #[test]
+    fn rejects_aliasing_between_distinct_formal_resources_in_same_namespace() {
+        let mut ops = HashMap::new();
+        ops.insert("getProject".into(), ("GET".into(), "/projects/{project_id}".into(),
+            json!({"parameters":[{"in":"path","name":"project_id"}]})));
+        let link = json!({"links":{"resource":{"operationId":"getProject",
+            "parameters":{"path.project_id":"$response.body#/id"}}}});
+        let mut bindings = HashMap::new();
+        bind_from_openapi_links("projectA", &link, &json!({"id":"same-id"}),
+            &ops, &mut bindings).unwrap();
+        let err = bind_from_openapi_links("projectB", &link, &json!({"id":"same-id"}),
+            &ops, &mut bindings).unwrap_err();
+        assert!(err.contains("CONFORMANCE FAIL: distinct formal resources"), "{err}");
+        assert!(err.contains("projectA") && err.contains("projectB"));
+        assert_eq!(bindings.len(), 1, "rejected collision must not mutate binding table");
+    }
+
+    #[test]
+    fn permits_equal_id_strings_across_distinct_openapi_namespaces() {
+        let mut ops = HashMap::new();
+        ops.insert("getProject".into(), ("GET".into(), "/projects/{project_id}".into(),
+            json!({"parameters":[{"in":"path","name":"project_id"}]})));
+        ops.insert("getUser".into(), ("GET".into(), "/users/{user_id}".into(),
+            json!({"parameters":[{"in":"path","name":"user_id"}]})));
+        let project_link = json!({"links":{"resource":{"operationId":"getProject",
+            "parameters":{"path.project_id":"$response.body#/id"}}}});
+        let user_link = json!({"links":{"resource":{"operationId":"getUser",
+            "parameters":{"path.user_id":"$response.body#/id"}}}});
+        let mut bindings = HashMap::new();
+        bind_from_openapi_links("projectA", &project_link, &json!({"id":"42"}),
+            &ops, &mut bindings).unwrap();
+        bind_from_openapi_links("userA", &user_link, &json!({"id":"42"}),
+            &ops, &mut bindings).unwrap();
+        assert_eq!(bindings.len(), 2);
+    }
+
+    #[test]
+    fn permits_two_distinct_ids_in_same_namespace() {
+        let mut ops = HashMap::new();
+        ops.insert("getProject".into(), ("GET".into(), "/projects/{project_id}".into(),
+            json!({"parameters":[{"in":"path","name":"project_id"}]})));
+        let link = json!({"links":{"resource":{"operationId":"getProject",
+            "parameters":{"path.project_id":"$response.body#/id"}}}});
+        let mut bindings = HashMap::new();
+        bind_from_openapi_links("projectA", &link, &json!({"id":"1"}),
+            &ops, &mut bindings).unwrap();
+        bind_from_openapi_links("projectB", &link, &json!({"id":"2"}),
+            &ops, &mut bindings).unwrap();
+        assert_eq!(bindings.len(), 2);
     }
 
     #[test]
