@@ -29,7 +29,7 @@ jobs:
           rustc --version
           cargo --version
           mkdir -p /tmp/victoria-spike
-          apalache-mc --run-dir=/tmp/victoria-spike simulate --init=Init --next=Next --no-deadlock --length=3 --max-run=1 --output-traces=true spikes/http-vertical/WorkspaceHTTP.tla
+          apalache-mc --features=no-rows --run-dir=/tmp/victoria-spike simulate --init=Init --next=Next --no-deadlock --length=3 --max-run=1 --output-traces=true spikes/http-vertical/WorkspaceHTTP.tla
           find /tmp/victoria-spike -type f | sort
           ITF="$(find /tmp/victoria-spike -name '*.itf.json' -print -quit)"
           test -n "$ITF"
@@ -44,7 +44,7 @@ jobs:
           PY
           echo "=== OPTIONAL tracee proof ==="
           mkdir -p /tmp/victoria-tracee
-          if apalache-mc --run-dir=/tmp/victoria-tracee tracee spikes/http-vertical/WorkspaceHTTP.tla "$ITF" VisibleCount; then
+          if apalache-mc --features=no-rows --run-dir=/tmp/victoria-tracee tracee spikes/http-vertical/WorkspaceHTTP.tla "$ITF" VisibleCount; then
             echo "TRACEE_COMMAND_PASS"
             find /tmp/victoria-tracee -name '*.itf.json' -print
           else
